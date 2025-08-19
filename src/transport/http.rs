@@ -27,6 +27,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::{MessageHandler, McpMessage, ToolsCallParams};
+use super::sse_auth::{SseAuthenticator, SseConnection};
+use crate::security::{SecurityProvider, RequestSanitizer};
+use crate::metrics::{MetricsProvider, HealthStatus};
 
 /// HTTP transport for web applications and remote access
 #[derive(Clone)]
@@ -37,6 +40,8 @@ pub struct HttpTransport {
     auth_enabled: bool,
     auth_tokens: Arc<RwLock<HashMap<String, AuthToken>>>,
     sse_clients: Arc<RwLock<HashMap<String, broadcast::Sender<SseMessage>>>>,
+    security_provider: Option<Arc<SecurityProvider>>,
+    metrics_provider: Option<Arc<MetricsProvider>>,
 }
 
 /// Authentication token structure
@@ -94,6 +99,8 @@ impl HttpTransport {
             auth_enabled: false,
             auth_tokens: Arc::new(RwLock::new(HashMap::new())),
             sse_clients: Arc::new(RwLock::new(HashMap::new())),
+            security_provider: None,
+            metrics_provider: None,
         }
     }
 
@@ -111,6 +118,49 @@ impl HttpTransport {
             auth_enabled,
             auth_tokens: Arc::new(RwLock::new(HashMap::new())),
             sse_clients: Arc::new(RwLock::new(HashMap::new())),
+            security_provider: None,
+            metrics_provider: None,
+        }
+    }
+
+    /// Create a new HTTP transport with security provider
+    pub fn with_security(
+        port: u16,
+        host: String,
+        cors_origins: Vec<String>,
+        security_provider: Arc<SecurityProvider>,
+    ) -> Self {
+        let auth_enabled = security_provider.authenticator().is_auth_enabled();
+        Self {
+            port,
+            host,
+            cors_origins,
+            auth_enabled,
+            auth_tokens: Arc::new(RwLock::new(HashMap::new())),
+            sse_clients: Arc::new(RwLock::new(HashMap::new())),
+            security_provider: Some(security_provider),
+            metrics_provider: None,
+        }
+    }
+
+    /// Create a new HTTP transport with both security and metrics providers
+    pub fn with_full_monitoring(
+        port: u16,
+        host: String,
+        cors_origins: Vec<String>,
+        security_provider: Arc<SecurityProvider>,
+        metrics_provider: Arc<MetricsProvider>,
+    ) -> Self {
+        let auth_enabled = security_provider.authenticator().is_auth_enabled();
+        Self {
+            port,
+            host,
+            cors_origins,
+            auth_enabled,
+            auth_tokens: Arc::new(RwLock::new(HashMap::new())),
+            sse_clients: Arc::new(RwLock::new(HashMap::new())),
+            security_provider: Some(security_provider),
+            metrics_provider: Some(metrics_provider),
         }
     }
 
@@ -150,15 +200,30 @@ impl HttpTransport {
             .route("/mcp/tools/list", get(handle_tools_list))
             // SSE endpoint for streaming (GET for stream, POST for messages)
             .route("/sse", get(handle_sse_connection).post(handle_sse_message))
-            // Health check
+            // Health and monitoring endpoints
             .route("/health", get(handle_health_check))
+            .route("/ready", get(handle_readiness_check))
+            .route("/metrics", get(handle_metrics))
+            .route("/stats", get(handle_stats))
+            .route("/sse/auth-info", get(handle_sse_auth_info))
             // Add CORS middleware
             .layer(cors)
             .with_state(app_state);
 
+        // Add metrics collection middleware if enabled
+        if let Some(metrics_provider) = &self.metrics_provider {
+            let metrics_provider = metrics_provider.clone();
+            router = router.layer(middleware::from_fn_with_state(metrics_provider, metrics_middleware));
+        }
+
         // Add authentication middleware if enabled
         if self.auth_enabled {
-            router = router.layer(middleware::from_fn(auth_middleware));
+            if let Some(security_provider) = &self.security_provider {
+                let security_provider = security_provider.clone();
+                router = router.layer(middleware::from_fn_with_state(security_provider, security_auth_middleware));
+            } else {
+                router = router.layer(middleware::from_fn(auth_middleware));
+            }
         }
 
         router
@@ -273,6 +338,40 @@ async fn handle_tool_call(
 ) -> impl IntoResponse {
     debug!("HTTP tool call: {}", tool_name);
 
+    // Validate input if security provider is available
+    if let Some(security_provider) = &state.transport.security_provider {
+        // Validate tool arguments if they contain FHIRPath expressions or resources
+        if let Some(ref arguments) = request.arguments {
+            // Check for FHIRPath expression in arguments
+            if let Some(expression) = arguments.get("expression").and_then(|v| v.as_str()) {
+                if let Err(e) = security_provider.validator().validate_fhirpath_expression(expression) {
+                    warn!("FHIRPath expression validation failed: {}", e);
+                    let error_msg = RequestSanitizer::sanitize_error_message(&e.to_string(), false);
+                    let response = McpResponse {
+                        success: false,
+                        result: None,
+                        error: Some(error_msg),
+                    };
+                    return (StatusCode::BAD_REQUEST, Json(response));
+                }
+            }
+
+            // Check for FHIR resource in arguments
+            if let Some(resource) = arguments.get("resource") {
+                if let Err(e) = security_provider.validator().validate_fhir_resource(resource) {
+                    warn!("FHIR resource validation failed: {}", e);
+                    let error_msg = RequestSanitizer::sanitize_error_message(&e.to_string(), false);
+                    let response = McpResponse {
+                        success: false,
+                        result: None,
+                        error: Some(error_msg),
+                    };
+                    return (StatusCode::BAD_REQUEST, Json(response));
+                }
+            }
+        }
+    }
+
     let mcp_message = McpMessage::ToolsCall {
         id: chrono::Utc::now().timestamp() as u64,
         params: ToolsCallParams {
@@ -350,52 +449,120 @@ async fn handle_tools_list(State(state): State<AppState>) -> impl IntoResponse {
 /// Handle SSE connections for streaming responses
 async fn handle_sse_connection(
     State(state): State<AppState>,
-    Query(params): Query<HashMap<String, String>>,
+    request: axum::extract::Request,
 ) -> impl IntoResponse {
-    let client_id = params.get("client_id")
-        .cloned()
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    // Extract SSE connection info from request extensions (set by auth middleware)
+    let sse_connection = request.extensions().get::<SseConnection>().cloned();
+    
+    let sse_connection = match sse_connection {
+        Some(conn) => conn,
+        None => {
+            error!("SSE connection info not found in request extensions");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
 
-    info!("New SSE connection: {}", client_id);
+    let client_id = sse_connection.client_id.clone();
+    info!("Establishing SSE connection for authenticated client: {}", client_id);
 
     let (sender, receiver) = broadcast::channel(100);
     
     // Store the SSE client
     state.transport.sse_clients.write().await.insert(client_id.clone(), sender.clone());
 
-    // Create SSE stream
+    // Create SSE authenticator for refresh events
+    let sse_authenticator = if let Some(security_provider) = &state.transport.security_provider {
+        Some(SseAuthenticator::new(security_provider.clone()))
+    } else {
+        None
+    };
+
+    // Create enhanced SSE stream with authentication monitoring
     let stream = async_stream::stream! {
         let mut rx = receiver;
+        let mut connection = sse_connection;
         
-        // Send initial connection event
-        yield Ok::<Event, axum::Error>(Event::default()
-            .event("connected")
-            .data(json!({"client_id": client_id, "status": "connected"}).to_string()));
+        // Send initial connection event with authentication info
+        if let Some(ref authenticator) = sse_authenticator {
+            let connection_event = authenticator.create_connection_event(&connection);
+            yield Ok::<Event, axum::Error>(connection_event);
+        } else {
+            // Fallback connection event
+            yield Ok::<Event, axum::Error>(Event::default()
+                .event("connected")
+                .data(json!({
+                    "client_id": connection.client_id,
+                    "status": "connected",
+                    "authenticated": true
+                }).to_string()));
+        }
+
+        // Start connection monitoring loop
+        let mut last_refresh_check = std::time::Instant::now();
+        let refresh_check_interval = Duration::from_secs(60); // Check every minute
 
         loop {
-            match rx.recv().await {
-                Ok(msg) => {
-                    yield Ok::<Event, axum::Error>(Event::default()
-                        .id(msg.id)
-                        .event(&msg.event)
-                        .data(msg.data.to_string()));
+            // Check for token refresh requirements periodically
+            if last_refresh_check.elapsed() >= refresh_check_interval {
+                if let Some(ref authenticator) = sse_authenticator {
+                    match authenticator.validate_connection(&mut connection).await {
+                        Ok(()) => {
+                            // Check if refresh notification needed
+                            if let Some(refresh_event) = authenticator.create_refresh_event(&connection) {
+                                yield Ok(refresh_event);
+                            }
+                        }
+                        Err(error_event) => {
+                            // Connection expired or authentication failed
+                            yield Ok(error_event);
+                            break;
+                        }
+                    }
                 }
-                Err(broadcast::error::RecvError::Closed) => {
-                    info!("SSE client {} disconnected", client_id);
-                    break;
+                last_refresh_check = std::time::Instant::now();
+            }
+
+            // Handle incoming messages with timeout
+            let timeout_duration = Duration::from_secs(30);
+            match tokio::time::timeout(timeout_duration, rx.recv()).await {
+                Ok(msg_result) => {
+                    match msg_result {
+                        Ok(msg) => {
+                            connection.update_activity(); // Update activity on message
+                            yield Ok::<Event, axum::Error>(Event::default()
+                                .id(msg.id)
+                                .event(&msg.event)
+                                .data(msg.data.to_string()));
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            info!("SSE client {} disconnected", connection.client_id);
+                            break;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            warn!("SSE client {} lagged behind", connection.client_id);
+                            continue;
+                        }
+                    }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    warn!("SSE client {} lagged behind", client_id);
+                Err(_) => {
+                    // Timeout occurred, continue loop for keep-alive and refresh checks
                     continue;
                 }
             }
         }
         
-        // Clean up on disconnect
-        state.transport.sse_clients.write().await.remove(&client_id);
+        // Send disconnection event and clean up
+        yield Ok(Event::default()
+            .event("disconnected")
+            .data(json!({
+                "client_id": connection.client_id,
+                "reason": "connection_ended"
+            }).to_string()));
+        
+        state.transport.sse_clients.write().await.remove(&connection.client_id);
     };
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
 /// Handle MCP messages sent to SSE endpoint
@@ -458,18 +625,88 @@ async fn handle_sse_message(
     }
 }
 
-/// Health check endpoint
-async fn handle_health_check() -> impl IntoResponse {
-    let response = HealthResponse {
-        status: "healthy".to_string(),
-        version: crate::VERSION.to_string(),
-        timestamp: chrono::Utc::now(),
-    };
-    
-    (StatusCode::OK, Json(response))
+/// Health check endpoint with comprehensive monitoring
+async fn handle_health_check(State(state): State<AppState>) -> Response {
+    if let Some(metrics_provider) = &state.transport.metrics_provider {
+        let health_response = metrics_provider.get_health_status().await;
+        let status_code = match health_response.status {
+            HealthStatus::Healthy => StatusCode::OK,
+            HealthStatus::Degraded => StatusCode::OK, // Still serving requests
+            HealthStatus::Unhealthy => StatusCode::SERVICE_UNAVAILABLE,
+        };
+        (status_code, Json(health_response)).into_response()
+    } else {
+        // Fallback to basic health check  
+        let response = serde_json::json!({
+            "status": "healthy",
+            "version": crate::VERSION,
+            "timestamp": chrono::Utc::now()
+        });
+        (StatusCode::OK, Json(response)).into_response()
+    }
 }
 
-/// Authentication middleware
+/// Readiness check endpoint
+async fn handle_readiness_check(State(state): State<AppState>) -> Response {
+    if let Some(metrics_provider) = &state.transport.metrics_provider {
+        let readiness_response = metrics_provider.get_readiness_status().await;
+        let status_code = if readiness_response.ready {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        };
+        (status_code, Json(readiness_response)).into_response()
+    } else {
+        // Fallback - always ready if no metrics
+        let response = serde_json::json!({
+            "ready": true,
+            "timestamp": chrono::Utc::now(),
+            "message": "No health checks configured"
+        });
+        (StatusCode::OK, Json(response)).into_response()
+    }
+}
+
+/// Prometheus-style metrics endpoint
+async fn handle_metrics(State(state): State<AppState>) -> Response {
+    if let Some(metrics_provider) = &state.transport.metrics_provider {
+        let prometheus_metrics = metrics_provider.get_prometheus_metrics().await;
+        let content_type = prometheus_metrics.content_type.clone();
+        (
+            StatusCode::OK,
+            [(hyper::header::CONTENT_TYPE, content_type.as_str())],
+            prometheus_metrics.data,
+        ).into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            [(hyper::header::CONTENT_TYPE, "text/plain")],
+            "Metrics not available".to_string(),
+        ).into_response()
+    }
+}
+
+/// JSON stats endpoint
+async fn handle_stats(State(state): State<AppState>) -> Response {
+    if let Some(metrics_provider) = &state.transport.metrics_provider {
+        let stats = metrics_provider.get_metrics_snapshot().await;
+        (StatusCode::OK, Json(stats)).into_response()
+    } else {
+        let empty_stats = serde_json::json!({
+            "error": "Metrics not available",
+            "timestamp": chrono::Utc::now()
+        });
+        (StatusCode::NOT_FOUND, Json(empty_stats)).into_response()
+    }
+}
+
+/// SSE authentication info endpoint
+async fn handle_sse_auth_info() -> impl IntoResponse {
+    let auth_info = super::sse_auth::create_client_auth_instructions();
+    (StatusCode::OK, Json(auth_info))
+}
+
+/// Authentication middleware (legacy)
 async fn auth_middleware(
     headers: HeaderMap,
     request: axum::extract::Request,
@@ -494,6 +731,152 @@ async fn auth_middleware(
         }
         None => Err(StatusCode::UNAUTHORIZED),
     }
+}
+
+/// Security-aware authentication middleware
+async fn security_auth_middleware(
+    State(security_provider): State<Arc<SecurityProvider>>,
+    headers: HeaderMap,
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<Response, StatusCode> {
+    // Skip auth for health check endpoint
+    let path = request.uri().path();
+    if path == "/health" {
+        return Ok(next.run(request).await);
+    }
+
+    // Special handling for SSE endpoints with enhanced authentication
+    if path == "/sse" {
+        return handle_sse_authentication(security_provider, headers, request, next).await;
+    }
+
+    // Standard authentication for other endpoints
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok());
+
+    let authenticated_request = match auth_header {
+        Some(header) => {
+            security_provider
+                .authenticator()
+                .parse_authorization_header(header)
+                .map_err(|e| {
+                    error!("Authentication failed: {}", e);
+                    StatusCode::UNAUTHORIZED
+                })?
+        }
+        None => {
+            error!("Missing Authorization header");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Add correlation ID to request headers for logging
+    let correlation_id = RequestSanitizer::create_correlation_id();
+    if let Ok(header_value) = correlation_id.parse() {
+        request.headers_mut().insert("X-Correlation-ID", header_value);
+    }
+
+    // Store authenticated request information in extensions for handlers to use
+    request.extensions_mut().insert(authenticated_request);
+
+    info!("Request authenticated successfully with correlation ID: {}", correlation_id);
+
+    Ok(next.run(request).await)
+}
+
+/// Enhanced SSE authentication handler
+async fn handle_sse_authentication(
+    security_provider: Arc<SecurityProvider>,
+    headers: HeaderMap,
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<Response, StatusCode> {
+    // Extract query parameters for SSE authentication
+    let uri = request.uri();
+    let _query_string = uri.query().unwrap_or("");
+    
+    // Parse query parameters
+    let query_params = axum::extract::Query::<HashMap<String, String>>::try_from_uri(uri)
+        .map_err(|_| {
+            error!("Failed to parse SSE query parameters");
+            StatusCode::BAD_REQUEST
+        })?;
+
+    // Create SSE authenticator and authenticate the connection
+    let sse_authenticator = SseAuthenticator::new(security_provider.clone());
+    
+    match sse_authenticator.authenticate_sse_connection(&headers, &query_params).await {
+        Ok(sse_connection) => {
+            info!("SSE connection authenticated for client: {}", sse_connection.client_id);
+            
+            // Store SSE connection info for handlers
+            request.extensions_mut().insert(sse_connection.authenticated_request.clone());
+            request.extensions_mut().insert(sse_connection);
+            
+            // Add correlation ID
+            let correlation_id = RequestSanitizer::create_correlation_id();
+            if let Ok(header_value) = correlation_id.parse() {
+                request.headers_mut().insert("X-Correlation-ID", header_value);
+            }
+            
+            Ok(next.run(request).await)
+        }
+        Err(status_code) => {
+            error!("SSE authentication failed");
+            Err(status_code)
+        }
+    }
+}
+
+/// Metrics collection middleware
+async fn metrics_middleware(
+    State(metrics_provider): State<Arc<MetricsProvider>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<Response, StatusCode> {
+    let start_time = std::time::Instant::now();
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+
+    // Track active connections
+    metrics_provider.increment_active_connections();
+
+    // Process the request
+    let response = next.run(request).await;
+    
+    // Calculate response time
+    let response_time = start_time.elapsed();
+    let is_error = response.status().is_client_error() || response.status().is_server_error();
+
+    // Record metrics
+    metrics_provider.record_request(response_time, is_error);
+
+    // Track tool-specific metrics
+    if path.starts_with("/mcp/tools/") {
+        let tool_name = path.strip_prefix("/mcp/tools/").unwrap_or("unknown");
+        let metric_name = format!("tool_{}_requests", tool_name);
+        metrics_provider.increment_custom_metric(&metric_name, 1).await;
+        
+        if is_error {
+            let error_metric = format!("tool_{}_errors", tool_name);
+            metrics_provider.increment_custom_metric(&error_metric, 1).await;
+        }
+    }
+
+    // Track active connections (decrement)
+    metrics_provider.decrement_active_connections();
+
+    tracing::debug!(
+        "Request {} {} completed in {}ms with status {}",
+        method,
+        path,
+        response_time.as_millis(),
+        response.status()
+    );
+
+    Ok(response)
 }
 
 #[cfg(test)]

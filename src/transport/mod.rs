@@ -7,6 +7,7 @@
 
 pub mod stdio;
 pub mod http;
+pub mod sse_auth;
 
 use anyhow::Result;
 use async_trait::async_trait;

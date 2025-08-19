@@ -1,0 +1,60 @@
+{
+  "expressions": [
+    {
+      "name": "syntax_error_unclosed_paren",
+      "expression": "Patient.name.where(use='official'",
+      "description": "Syntax error: unclosed parenthesis",
+      "expected_error": true,
+      "error_type": "SyntaxError"
+    },
+    {
+      "name": "invalid_function_name",
+      "expression": "Patient.name.invalidFunction()",
+      "description": "Error: invalid function name",
+      "expected_error": true,
+      "error_type": "FunctionError"
+    },
+    {
+      "name": "type_mismatch_error",
+      "expression": "Patient.birthDate + 10",
+      "description": "Type error: cannot add number to date",
+      "expected_error": true,
+      "error_type": "TypeError"
+    },
+    {
+      "name": "invalid_property_access",
+      "expression": "Patient.nonExistentProperty",
+      "description": "Accessing non-existent property (should return empty, not error)",
+      "expected_error": false,
+      "expected_values": []
+    },
+    {
+      "name": "division_by_zero",
+      "expression": "10 / 0",
+      "description": "Division by zero error",
+      "expected_error": true,
+      "error_type": "MathError"
+    },
+    {
+      "name": "invalid_regex_pattern",
+      "expression": "Patient.name.family.matches('[invalid')",
+      "description": "Invalid regex pattern",
+      "expected_error": true,
+      "error_type": "RegexError"
+    },
+    {
+      "name": "empty_expression",
+      "expression": "",
+      "description": "Empty expression",
+      "expected_error": true,
+      "error_type": "SyntaxError"
+    },
+    {
+      "name": "malformed_string",
+      "expression": "Patient.name.family = 'unclosed string",
+      "description": "Malformed string literal",
+      "expected_error": true,
+      "error_type": "SyntaxError"
+    }
+  ]
+}

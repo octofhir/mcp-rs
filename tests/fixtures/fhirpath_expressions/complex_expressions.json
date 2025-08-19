@@ -1,0 +1,88 @@
+{
+  "expressions": [
+    {
+      "name": "complex_where_clause",
+      "expression": "Patient.name.where(use='official').given.join(' ')",
+      "description": "Complex filtering and joining of patient names",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": ["John Michael"]
+        }
+      ]
+    },
+    {
+      "name": "observation_with_unit",
+      "expression": "Observation.valueQuantity.value.toString() + ' ' + Observation.valueQuantity.unit",
+      "description": "Concatenate observation value with unit",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Observation",
+          "expected_values": ["36.5 °C"]
+        }
+      ]
+    },
+    {
+      "name": "patient_full_address",
+      "expression": "Patient.address.where(use='home').line.join(', ') + ', ' + city + ', ' + state + ' ' + postalCode",
+      "description": "Build full address string from Patient",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": ["123 Main Street, Apt 4B, Anytown, CA 12345"]
+        }
+      ]
+    },
+    {
+      "name": "bundle_observation_values",
+      "expression": "Bundle.entry.resource.where(resourceType='Observation').valueQuantity.value",
+      "description": "Extract all observation values from Bundle",
+      "expected_type": "decimal",
+      "test_cases": [
+        {
+          "resource_type": "Bundle",
+          "expected_values": []
+        }
+      ]
+    },
+    {
+      "name": "observation_component_heart_rate",
+      "expression": "Observation.component.where(code.coding.code='8867-4').valueQuantity.value",
+      "description": "Extract heart rate from observation components",
+      "expected_type": "decimal",
+      "test_cases": [
+        {
+          "resource_type": "Observation",
+          "expected_values": [72]
+        }
+      ]
+    },
+    {
+      "name": "patient_age_calculation",
+      "expression": "Patient.birthDate.toDate().yearsTo(today())",
+      "description": "Calculate patient age from birth date",
+      "expected_type": "integer",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": [44]
+        }
+      ]
+    },
+    {
+      "name": "conditional_gender_display",
+      "expression": "iif(Patient.gender='male', 'Mr.', iif(Patient.gender='female', 'Ms.', 'Mx.')) + ' ' + Patient.name.where(use='official').family.first()",
+      "description": "Conditional formatting based on gender",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": ["Mr. Doe"]
+        }
+      ]
+    }
+  ]
+}
