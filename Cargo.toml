@@ -81,6 +81,9 @@ async-trait = "0.1"
 # HTTP client for rmcp SDK
 reqwest = { version = "0.12", features = ["json"] }
 
+# OpenSSL with vendored feature for cross-compilation
+openssl = { version = "0.10", features = ["vendored"] }
+
 # Numeric conversion traits
 num-traits = "0.2"
 
