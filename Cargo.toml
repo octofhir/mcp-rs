@@ -18,9 +18,6 @@ path = "src/bin/octofhir-mcp.rs"
 name = "octofhir-benchmark"
 path = "src/bin/benchmark.rs"
 
-[[bin]]
-name = "octofhir-validate-server"
-path = "src/bin/validate-server.rs"
 
 [dependencies]
 octofhir-fhirpath = "0.4.15"

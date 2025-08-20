@@ -197,12 +197,13 @@ jobs:
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
-            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-benchmark
-            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-validate-server
           else
-            cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
-            cargo build --release --target ${{ matrix.target }} --bin octofhir-benchmark
-            cargo build --release --target ${{ matrix.target }} --bin octofhir-validate-server
+            # Use cross-compile feature for Linux targets to ensure consistent builds
+            if [[ "${{ matrix.target }}" == *"linux"* ]]; then
+              cargo build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
+            else
+              cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
+            fi
           fi
         shell: bash
 
@@ -211,12 +212,8 @@ jobs:
           mkdir -p dist
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp target/${{ matrix.target }}/release/octofhir-mcp${{ matrix.ext }} dist/octofhir-mcp${{ matrix.ext }}
-            cp target/${{ matrix.target }}/release/octofhir-benchmark${{ matrix.ext }} dist/octofhir-benchmark${{ matrix.ext }}
-            cp target/${{ matrix.target }}/release/octofhir-validate-server${{ matrix.ext }} dist/octofhir-validate-server${{ matrix.ext }}
           else
             cp target/${{ matrix.target }}/release/octofhir-mcp dist/octofhir-mcp
-            cp target/${{ matrix.target }}/release/octofhir-benchmark dist/octofhir-benchmark
-            cp target/${{ matrix.target }}/release/octofhir-validate-server dist/octofhir-validate-server
           fi
         shell: bash
 
@@ -224,9 +221,9 @@ jobs:
         run: |
           cd dist
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            7z a ${{ matrix.name }}.zip octofhir-mcp${{ matrix.ext }} octofhir-benchmark${{ matrix.ext }} octofhir-validate-server${{ matrix.ext }}
+            7z a ${{ matrix.name }}.zip octofhir-mcp${{ matrix.ext }}
           else
-            tar czf ${{ matrix.name }}.tar.gz octofhir-mcp octofhir-benchmark octofhir-validate-server
+            tar czf ${{ matrix.name }}.tar.gz octofhir-mcp
           fi
         shell: bash
 

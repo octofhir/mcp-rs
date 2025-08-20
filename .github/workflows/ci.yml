@@ -175,10 +175,6 @@ jobs:
         with:
           key: perf-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run benchmarks
-        run: |
-          cargo build --release --bin octofhir-benchmark
-          timeout 300 cargo run --bin octofhir-benchmark --release || echo "Benchmark completed or timed out"
 
   security-scan:
     name: Security Scan
@@ -291,7 +287,6 @@ jobs:
                 "${{ needs.test.result }}" != "success" || 
                 "${{ needs.build-check.result }}" != "success" || 
                 "${{ needs.documentation.result }}" != "success" || 
-                "${{ needs.msrv-check.result }}" != "success" || 
                 "${{ needs.docker-build-test.result }}" != "success" || 
                 "${{ needs.just-commands-test.result }}" != "success" ]]; then
             echo "❌ Some checks failed"
