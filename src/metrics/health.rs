@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc, RwLock,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant, SystemTime},
 };
@@ -156,7 +156,7 @@ impl RequestMetrics {
 
     fn add_request(&mut self, response_time_ms: f64, is_error: bool) {
         let now = Instant::now();
-        
+
         // Add response time (keep only last 1000 for percentile calculations)
         self.response_times.push(response_time_ms);
         if self.response_times.len() > 1000 {
@@ -170,7 +170,8 @@ impl RequestMetrics {
 
         // Track requests in last minute
         self.last_minute_requests.push(now);
-        self.last_minute_requests.retain(|&time| now.duration_since(time) <= Duration::from_secs(60));
+        self.last_minute_requests
+            .retain(|&time| now.duration_since(time) <= Duration::from_secs(60));
     }
 
     fn calculate_percentile(&self, percentile: f64) -> f64 {
@@ -180,7 +181,7 @@ impl RequestMetrics {
 
         let mut sorted_times = self.response_times.clone();
         sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
+
         let index = ((percentile / 100.0) * (sorted_times.len() - 1) as f64) as usize;
         sorted_times[index.min(sorted_times.len() - 1)]
     }
@@ -279,7 +280,8 @@ impl HealthMonitor {
 
         // FHIRPath library health check
         let fhirpath_check = self.check_fhirpath_library().await;
-        self.update_health_check("fhirpath_library", fhirpath_check).await;
+        self.update_health_check("fhirpath_library", fhirpath_check)
+            .await;
 
         // Memory usage check
         let memory_check = self.check_memory_usage();
@@ -291,7 +293,8 @@ impl HealthMonitor {
 
         // Performance check
         let performance_check = self.check_performance();
-        self.update_health_check("performance", performance_check).await;
+        self.update_health_check("performance", performance_check)
+            .await;
 
         let duration = start_time.elapsed();
         tracing::debug!("Health checks completed in {}ms", duration.as_millis());
@@ -301,7 +304,10 @@ impl HealthMonitor {
 
     pub fn record_request(&self, response_time_ms: f64, is_error: bool) {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.request_metrics.write().unwrap().add_request(response_time_ms, is_error);
+        self.request_metrics
+            .write()
+            .unwrap()
+            .add_request(response_time_ms, is_error);
     }
 
     pub fn increment_active_connections(&self) {
@@ -312,9 +318,15 @@ impl HealthMonitor {
         self.active_connections.fetch_sub(1, Ordering::Relaxed);
     }
 
-    async fn calculate_overall_status(&self, checks: &HashMap<String, HealthCheck>) -> HealthStatus {
+    async fn calculate_overall_status(
+        &self,
+        checks: &HashMap<String, HealthCheck>,
+    ) -> HealthStatus {
         if checks.values().any(|check| !check.status.is_healthy()) {
-            if checks.values().any(|check| matches!(check.status, HealthStatus::Unhealthy)) {
+            if checks
+                .values()
+                .any(|check| matches!(check.status, HealthStatus::Unhealthy))
+            {
                 HealthStatus::Unhealthy
             } else {
                 HealthStatus::Degraded
@@ -326,10 +338,12 @@ impl HealthMonitor {
 
     async fn check_fhirpath_library(&self) -> HealthCheck {
         let start_time = Instant::now();
-        
+
         match self.test_fhirpath_evaluation().await {
-            Ok(_) => HealthCheck::healthy("FHIRPath library operational").with_duration(start_time.elapsed()),
-            Err(e) => HealthCheck::unhealthy(format!("FHIRPath library error: {}", e)).with_duration(start_time.elapsed()),
+            Ok(_) => HealthCheck::healthy("FHIRPath library operational")
+                .with_duration(start_time.elapsed()),
+            Err(e) => HealthCheck::unhealthy(format!("FHIRPath library error: {e}"))
+                .with_duration(start_time.elapsed()),
         }
     }
 
@@ -341,15 +355,13 @@ impl HealthMonitor {
         });
 
         let expression = "Patient.id";
-        
+
         // Using the shared engine for health check
         match crate::fhirpath_engine::get_shared_engine().await {
-            Ok(factory) => {
-                match factory.evaluate(expression, test_resource).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(anyhow::anyhow!("FHIRPath evaluation failed: {}", e)),
-                }
-            }
+            Ok(factory) => match factory.evaluate(expression, test_resource).await {
+                Ok(_) => Ok(()),
+                Err(e) => Err(anyhow::anyhow!("FHIRPath evaluation failed: {}", e)),
+            },
             Err(e) => Err(anyhow::anyhow!("Engine factory access failed: {}", e)),
         }
     }
@@ -359,24 +371,30 @@ impl HealthMonitor {
         let memory_mb = self.get_memory_usage_mb();
 
         if memory_mb > self.config.memory_threshold_mb * 1.5 {
-            HealthCheck::unhealthy(format!("High memory usage: {:.1}MB", memory_mb)).with_duration(start_time.elapsed())
+            HealthCheck::unhealthy(format!("High memory usage: {memory_mb:.1}MB"))
+                .with_duration(start_time.elapsed())
         } else if memory_mb > self.config.memory_threshold_mb {
-            HealthCheck::degraded(format!("Elevated memory usage: {:.1}MB", memory_mb)).with_duration(start_time.elapsed())
+            HealthCheck::degraded(format!("Elevated memory usage: {memory_mb:.1}MB"))
+                .with_duration(start_time.elapsed())
         } else {
-            HealthCheck::healthy(format!("Memory usage normal: {:.1}MB", memory_mb)).with_duration(start_time.elapsed())
+            HealthCheck::healthy(format!("Memory usage normal: {memory_mb:.1}MB"))
+                .with_duration(start_time.elapsed())
         }
     }
 
     fn check_thread_pool(&self) -> HealthCheck {
         let start_time = Instant::now();
-        
+
         // Basic thread pool health check
         let active_threads = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(1);
 
         if active_threads > 0 {
-            HealthCheck::healthy(format!("Thread pool operational: {} threads", active_threads)).with_duration(start_time.elapsed())
+            HealthCheck::healthy(format!(
+                "Thread pool operational: {active_threads} threads"
+            ))
+            .with_duration(start_time.elapsed())
         } else {
             HealthCheck::unhealthy("Thread pool unavailable").with_duration(start_time.elapsed())
         }
@@ -390,14 +408,20 @@ impl HealthMonitor {
         let error_rate = metrics.error_rate_percent();
 
         if error_rate > self.config.error_rate_threshold_percent * 2.0 {
-            HealthCheck::unhealthy(format!("High error rate: {:.1}%", error_rate)).with_duration(start_time.elapsed())
-        } else if error_rate > self.config.error_rate_threshold_percent || 
-                  avg_response_time > self.config.response_time_threshold_ms {
-            HealthCheck::degraded(format!("Performance degraded - errors: {:.1}%, avg response: {:.1}ms", 
-                                         error_rate, avg_response_time)).with_duration(start_time.elapsed())
+            HealthCheck::unhealthy(format!("High error rate: {error_rate:.1}%"))
+                .with_duration(start_time.elapsed())
+        } else if error_rate > self.config.error_rate_threshold_percent
+            || avg_response_time > self.config.response_time_threshold_ms
+        {
+            HealthCheck::degraded(format!(
+                "Performance degraded - errors: {error_rate:.1}%, avg response: {avg_response_time:.1}ms"
+            ))
+            .with_duration(start_time.elapsed())
         } else {
-            HealthCheck::healthy(format!("Performance good - errors: {:.1}%, avg response: {:.1}ms", 
-                                        error_rate, avg_response_time)).with_duration(start_time.elapsed())
+            HealthCheck::healthy(format!(
+                "Performance good - errors: {error_rate:.1}%, avg response: {avg_response_time:.1}ms"
+            ))
+            .with_duration(start_time.elapsed())
         }
     }
 
@@ -406,7 +430,7 @@ impl HealthMonitor {
         // In production, you might want to use a system monitoring library like `sysinfo`
         // For now, return a reasonable approximation based on process info
         // This is a placeholder - in production you'd use system metrics
-        
+
         // Try to get memory usage from /proc/self/status on Linux-like systems
         #[cfg(target_os = "linux")]
         {
@@ -422,7 +446,7 @@ impl HealthMonitor {
                 }
             }
         }
-        
+
         // Fallback approximation
         32.0 // MB
     }
@@ -443,10 +467,10 @@ mod tests {
     fn test_health_status_methods() {
         assert!(HealthStatus::Healthy.is_healthy());
         assert!(!HealthStatus::Healthy.is_degraded());
-        
+
         assert!(!HealthStatus::Degraded.is_healthy());
         assert!(HealthStatus::Degraded.is_degraded());
-        
+
         assert!(!HealthStatus::Unhealthy.is_healthy());
         assert!(!HealthStatus::Unhealthy.is_degraded());
     }
@@ -454,11 +478,11 @@ mod tests {
     #[test]
     fn test_request_metrics() {
         let mut metrics = RequestMetrics::new();
-        
+
         metrics.add_request(100.0, false);
         metrics.add_request(200.0, false);
         metrics.add_request(150.0, true);
-        
+
         assert_eq!(metrics.average_response_time(), 150.0);
         assert_eq!(metrics.calculate_percentile(50.0), 150.0);
         assert!((metrics.error_rate_percent() - 33.33).abs() < 0.1);
@@ -468,7 +492,7 @@ mod tests {
     async fn test_health_monitor_creation() {
         let config = MonitoringConfig::default();
         let monitor = HealthMonitor::new(config, "test-0.1.0".to_string());
-        
+
         let health = monitor.get_health_status().await;
         assert_eq!(health.version, "test-0.1.0");
         assert!(health.uptime_seconds >= 0);
@@ -478,13 +502,15 @@ mod tests {
     async fn test_readiness_check() {
         let config = MonitoringConfig::default();
         let monitor = HealthMonitor::new(config, "test-0.1.0".to_string());
-        
+
         // Initially should be ready (no checks registered)
         let readiness = monitor.get_readiness_status().await;
         assert!(readiness.ready);
-        
+
         // Add a failing check
-        monitor.update_health_check("test", HealthCheck::unhealthy("Test failure")).await;
+        monitor
+            .update_health_check("test", HealthCheck::unhealthy("Test failure"))
+            .await;
         let readiness = monitor.get_readiness_status().await;
         assert!(!readiness.ready);
     }

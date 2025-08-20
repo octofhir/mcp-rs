@@ -1,5 +1,5 @@
 //! Server validation tool for OctoFHIR MCP Server
-//! 
+//!
 //! This tool validates server configuration, dependencies, and environment
 //! before starting the MCP server to ensure proper operation.
 
@@ -9,8 +9,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::net::TcpListener;
 use std::path::Path;
-use tracing::{error, info, warn, Level};
-use tracing_subscriber;
+use tracing::{Level, info};
 
 /// Validation result for individual checks
 #[derive(Debug, Clone)]
@@ -33,7 +32,12 @@ impl ValidationResult {
         }
     }
 
-    fn success_with_details(category: &str, check_name: &str, message: &str, details: serde_json::Value) -> Self {
+    fn success_with_details(
+        category: &str,
+        check_name: &str,
+        message: &str,
+        details: serde_json::Value,
+    ) -> Self {
         Self {
             category: category.to_string(),
             check_name: check_name.to_string(),
@@ -58,7 +62,7 @@ impl ValidationResult {
             category: category.to_string(),
             check_name: check_name.to_string(),
             passed: true, // Warnings don't fail validation
-            message: format!("WARNING: {}", message),
+            message: format!("WARNING: {message}"),
             details: None,
         }
     }
@@ -88,14 +92,17 @@ impl ValidationReport {
 
     fn print_summary(&self) {
         println!("\n=== OctoFHIR MCP Server Validation Report ===");
-        
+
         let mut categories: HashMap<String, Vec<&ValidationResult>> = HashMap::new();
         for result in &self.results {
-            categories.entry(result.category.clone()).or_default().push(result);
+            categories
+                .entry(result.category.clone())
+                .or_default()
+                .push(result);
         }
 
         for (category, results) in categories {
-            println!("\n[{}]", category);
+            println!("\n[{category}]");
             for result in results {
                 let status = if result.passed {
                     if result.message.starts_with("WARNING") {
@@ -106,11 +113,14 @@ impl ValidationReport {
                 } else {
                     "❌"
                 };
-                
+
                 println!("  {} {}: {}", status, result.check_name, result.message);
-                
+
                 if let Some(details) = &result.details {
-                    println!("     Details: {}", serde_json::to_string_pretty(details).unwrap_or_default());
+                    println!(
+                        "     Details: {}",
+                        serde_json::to_string_pretty(details).unwrap_or_default()
+                    );
                 }
             }
         }
@@ -124,7 +134,9 @@ impl ValidationReport {
 
         let passed_count = self.results.iter().filter(|r| r.passed).count();
         let failed_count = self.results.len() - passed_count;
-        println!("📊 Summary: {} passed, {} failed", passed_count, failed_count);
+        println!(
+            "📊 Summary: {passed_count} passed, {failed_count} failed"
+        );
     }
 }
 
@@ -144,7 +156,7 @@ async fn main() -> Result<()> {
                 .short('c')
                 .long("config")
                 .value_name("FILE")
-                .help("Configuration file path")
+                .help("Configuration file path"),
         )
         .arg(
             Arg::new("port")
@@ -152,26 +164,27 @@ async fn main() -> Result<()> {
                 .long("port")
                 .value_name("PORT")
                 .help("HTTP server port to validate")
-                .default_value("8080")
+                .default_value("8080"),
         )
         .arg(
             Arg::new("host")
                 .long("host")
                 .value_name("HOST")
                 .help("HTTP server host to validate")
-                .default_value("127.0.0.1")
+                .default_value("0.0.0.0"),
         )
         .arg(
             Arg::new("verbose")
                 .short('v')
                 .long("verbose")
                 .help("Enable verbose output")
-                .action(clap::ArgAction::SetTrue)
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
 
     let config_path = matches.get_one::<String>("config");
-    let port: u16 = matches.get_one::<String>("port")
+    let port: u16 = matches
+        .get_one::<String>("port")
         .unwrap()
         .parse()
         .context("Invalid port number")?;
@@ -214,13 +227,13 @@ async fn validate_rust_environment(report: &mut ValidationReport) {
         report.add_result(ValidationResult::warning(
             "Environment",
             "Build Mode",
-            "Running in debug mode - consider using release build for production"
+            "Running in debug mode - consider using release build for production",
         ));
     } else {
         report.add_result(ValidationResult::success(
             "Environment",
             "Build Mode",
-            "Running in release mode"
+            "Running in release mode",
         ));
     }
 
@@ -230,21 +243,21 @@ async fn validate_rust_environment(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Environment",
                 "Memory",
-                &format!("Sufficient memory available: {} MB", memory_mb)
+                &format!("Sufficient memory available: {memory_mb} MB"),
             ));
         }
         Ok(memory_mb) => {
             report.add_result(ValidationResult::warning(
                 "Environment",
                 "Memory",
-                &format!("Low memory: {} MB (recommended: 512 MB+)", memory_mb)
+                &format!("Low memory: {memory_mb} MB (recommended: 512 MB+)"),
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::warning(
                 "Environment",
                 "Memory",
-                &format!("Could not check memory: {}", e)
+                &format!("Could not check memory: {e}"),
             ));
         }
     }
@@ -258,14 +271,14 @@ async fn validate_dependencies(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Dependencies",
                 "Tokio Runtime",
-                "Tokio async runtime is available"
+                "Tokio async runtime is available",
             ));
         }
         Err(_) => {
             report.add_result(ValidationResult::failure(
                 "Dependencies",
                 "Tokio Runtime",
-                "Tokio async runtime not available"
+                "Tokio async runtime not available",
             ));
         }
     }
@@ -277,14 +290,14 @@ async fn validate_dependencies(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Dependencies",
                 "JSON Serialization",
-                "JSON serialization working correctly"
+                "JSON serialization working correctly",
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "Dependencies",
                 "JSON Serialization",
-                &format!("JSON serialization failed: {}", e)
+                &format!("JSON serialization failed: {e}"),
             ));
         }
     }
@@ -294,7 +307,7 @@ async fn validate_dependencies(report: &mut ValidationReport) {
     report.add_result(ValidationResult::success(
         "Dependencies",
         "UUID Generation",
-        &format!("UUID generation working: {}", test_uuid)
+        &format!("UUID generation working: {test_uuid}"),
     ));
 
     // Test datetime handling
@@ -302,7 +315,10 @@ async fn validate_dependencies(report: &mut ValidationReport) {
     report.add_result(ValidationResult::success(
         "Dependencies",
         "DateTime",
-        &format!("DateTime handling working: {}", now.format("%Y-%m-%d %H:%M:%S UTC"))
+        &format!(
+            "DateTime handling working: {}",
+            now.format("%Y-%m-%d %H:%M:%S UTC")
+        ),
     ));
 }
 
@@ -315,14 +331,14 @@ async fn validate_fhirpath_library(report: &mut ValidationReport) {
                 "FHIRPath",
                 "Library Integration",
                 "FHIRPath library integration successful",
-                details
+                details,
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "FHIRPath",
                 "Library Integration",
-                &format!("FHIRPath library integration failed: {}", e)
+                &format!("FHIRPath library integration failed: {e}"),
             ));
         }
     }
@@ -333,14 +349,14 @@ async fn validate_fhirpath_library(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "FHIRPath",
                 "Expression Parsing",
-                "FHIRPath expression parsing working"
+                "FHIRPath expression parsing working",
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "FHIRPath",
                 "Expression Parsing",
-                &format!("FHIRPath parsing failed: {}", e)
+                &format!("FHIRPath parsing failed: {e}"),
             ));
         }
     }
@@ -351,14 +367,14 @@ async fn validate_fhirpath_library(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "FHIRPath",
                 "FHIR Resources",
-                "FHIR resource handling working"
+                "FHIR resource handling working",
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "FHIRPath",
                 "FHIR Resources",
-                &format!("FHIR resource handling failed: {}", e)
+                &format!("FHIR resource handling failed: {e}"),
             ));
         }
     }
@@ -369,29 +385,27 @@ async fn validate_configuration(report: &mut ValidationReport, config_path: Opti
     if let Some(path) = config_path {
         if Path::new(path).exists() {
             match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    match serde_json::from_str::<serde_json::Value>(&content) {
-                        Ok(_) => {
-                            report.add_result(ValidationResult::success(
-                                "Configuration",
-                                "Config File",
-                                &format!("Configuration file valid: {}", path)
-                            ));
-                        }
-                        Err(e) => {
-                            report.add_result(ValidationResult::failure(
-                                "Configuration",
-                                "Config File",
-                                &format!("Invalid JSON in config file: {}", e)
-                            ));
-                        }
+                Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(_) => {
+                        report.add_result(ValidationResult::success(
+                            "Configuration",
+                            "Config File",
+                            &format!("Configuration file valid: {path}"),
+                        ));
                     }
-                }
+                    Err(e) => {
+                        report.add_result(ValidationResult::failure(
+                            "Configuration",
+                            "Config File",
+                            &format!("Invalid JSON in config file: {e}"),
+                        ));
+                    }
+                },
                 Err(e) => {
                     report.add_result(ValidationResult::failure(
                         "Configuration",
                         "Config File",
-                        &format!("Cannot read config file: {}", e)
+                        &format!("Cannot read config file: {e}"),
                     ));
                 }
             }
@@ -399,14 +413,14 @@ async fn validate_configuration(report: &mut ValidationReport, config_path: Opti
             report.add_result(ValidationResult::failure(
                 "Configuration",
                 "Config File",
-                &format!("Config file not found: {}", path)
+                &format!("Config file not found: {path}"),
             ));
         }
     } else {
         report.add_result(ValidationResult::success(
             "Configuration",
             "Config File",
-            "Using default configuration (no config file specified)"
+            "Using default configuration (no config file specified)",
         ));
     }
 }
@@ -414,19 +428,19 @@ async fn validate_configuration(report: &mut ValidationReport, config_path: Opti
 /// Validate network configuration
 async fn validate_network_configuration(report: &mut ValidationReport, host: &str, port: u16) {
     // Test if port is available
-    match TcpListener::bind(format!("{}:{}", host, port)) {
+    match TcpListener::bind(format!("{host}:{port}")) {
         Ok(_) => {
             report.add_result(ValidationResult::success(
                 "Network",
                 "Port Availability",
-                &format!("Port {}:{} is available", host, port)
+                &format!("Port {host}:{port} is available"),
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "Network",
                 "Port Availability",
-                &format!("Port {}:{} is not available: {}", host, port, e)
+                &format!("Port {host}:{port} is not available: {e}"),
             ));
         }
     }
@@ -437,24 +451,24 @@ async fn validate_network_configuration(report: &mut ValidationReport, host: &st
             report.add_result(ValidationResult::success(
                 "Network",
                 "Host Address",
-                &format!("Valid host address: {}", host)
+                &format!("Valid host address: {host}"),
             ));
         }
         Err(_) => {
             // Try resolving as hostname
-            match tokio::net::lookup_host(format!("{}:80", host)).await {
+            match tokio::net::lookup_host(format!("{host}:80")).await {
                 Ok(_) => {
                     report.add_result(ValidationResult::success(
                         "Network",
                         "Host Address",
-                        &format!("Valid hostname: {}", host)
+                        &format!("Valid hostname: {host}"),
                     ));
                 }
                 Err(e) => {
                     report.add_result(ValidationResult::failure(
                         "Network",
                         "Host Address",
-                        &format!("Invalid host address/hostname: {}", e)
+                        &format!("Invalid host address/hostname: {e}"),
                     ));
                 }
             }
@@ -467,7 +481,9 @@ async fn validate_network_configuration(report: &mut ValidationReport, host: &st
         report.add_result(ValidationResult::warning(
             "Network",
             "Port Choice",
-            &format!("Using common port {} - ensure no conflicts with other services", port)
+            &format!(
+                "Using common port {port} - ensure no conflicts with other services"
+            ),
         ));
     }
 }
@@ -480,14 +496,14 @@ async fn validate_security_configuration(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Security",
                 "Input Validation",
-                "Input validation working correctly"
+                "Input validation working correctly",
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "Security",
                 "Input Validation",
-                &format!("Input validation failed: {}", e)
+                &format!("Input validation failed: {e}"),
             ));
         }
     }
@@ -495,7 +511,7 @@ async fn validate_security_configuration(report: &mut ValidationReport) {
     report.add_result(ValidationResult::warning(
         "Security",
         "Authentication",
-        "Authentication configuration not checked - implement based on security requirements"
+        "Authentication configuration not checked - implement based on security requirements",
     ));
 }
 
@@ -505,7 +521,7 @@ async fn validate_transport_layers(report: &mut ValidationReport) {
     report.add_result(ValidationResult::success(
         "Transport",
         "Stdio Transport",
-        "Stdio transport available"
+        "Stdio transport available",
     ));
 
     // Test HTTP transport components
@@ -514,14 +530,14 @@ async fn validate_transport_layers(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Transport",
                 "HTTP Transport",
-                "HTTP transport components working"
+                "HTTP transport components working",
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "Transport",
                 "HTTP Transport",
-                &format!("HTTP transport validation failed: {}", e)
+                &format!("HTTP transport validation failed: {e}"),
             ));
         }
     }
@@ -530,7 +546,7 @@ async fn validate_transport_layers(report: &mut ValidationReport) {
     report.add_result(ValidationResult::success(
         "Transport",
         "SSE Support",
-        "Server-Sent Events support available"
+        "Server-Sent Events support available",
     ));
 }
 
@@ -542,14 +558,14 @@ async fn validate_tools_functionality(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Tools",
                 "FHIRPath Tools",
-                &format!("FHIRPath tools available: {} tools", tool_count)
+                &format!("FHIRPath tools available: {tool_count} tools"),
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "Tools",
                 "FHIRPath Tools",
-                &format!("FHIRPath tools validation failed: {}", e)
+                &format!("FHIRPath tools validation failed: {e}"),
             ));
         }
     }
@@ -560,14 +576,14 @@ async fn validate_tools_functionality(report: &mut ValidationReport) {
             report.add_result(ValidationResult::success(
                 "Tools",
                 "Tool Execution",
-                "Tool execution working correctly"
+                "Tool execution working correctly",
             ));
         }
         Err(e) => {
             report.add_result(ValidationResult::failure(
                 "Tools",
                 "Tool Execution",
-                &format!("Tool execution failed: {}", e)
+                &format!("Tool execution failed: {e}"),
             ));
         }
     }
@@ -584,13 +600,16 @@ async fn validate_performance_requirements(report: &mut ValidationReport) {
         report.add_result(ValidationResult::success(
             "Performance",
             "Memory Allocation",
-            &format!("Memory allocation performance good: {}ms", alloc_time.as_millis())
+            &format!(
+                "Memory allocation performance good: {}ms",
+                alloc_time.as_millis()
+            ),
         ));
     } else {
         report.add_result(ValidationResult::warning(
             "Performance",
             "Memory Allocation",
-            &format!("Slow memory allocation: {}ms", alloc_time.as_millis())
+            &format!("Slow memory allocation: {}ms", alloc_time.as_millis()),
         ));
     }
 
@@ -614,13 +633,16 @@ async fn validate_performance_requirements(report: &mut ValidationReport) {
         report.add_result(ValidationResult::success(
             "Performance",
             "JSON Processing",
-            &format!("JSON processing performance good: {}ms", json_time.as_millis())
+            &format!(
+                "JSON processing performance good: {}ms",
+                json_time.as_millis()
+            ),
         ));
     } else {
         report.add_result(ValidationResult::warning(
             "Performance",
             "JSON Processing",
-            &format!("Slow JSON processing: {}ms", json_time.as_millis())
+            &format!("Slow JSON processing: {}ms", json_time.as_millis()),
         ));
     }
 }

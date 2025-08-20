@@ -5,6 +5,12 @@
 /// Prompt provider (placeholder)
 pub struct PromptProvider;
 
+impl Default for PromptProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PromptProvider {
     pub fn new() -> Self {
         Self

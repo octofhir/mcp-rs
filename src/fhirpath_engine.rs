@@ -3,9 +3,13 @@
 //! This module provides a factory for creating FHIRPath engine instances with R4 FHIR schema
 //! provider to improve performance and reduce initialization overhead across tool calls.
 
-use anyhow::{anyhow, Result};
-use octofhir_fhirpath::{FhirPathEngine, FhirPathValue, model::{FhirSchemaModelProvider, ModelProvider}, utils};
+use anyhow::{Result, anyhow};
 use octofhir_fhir_model::provider::FhirVersion;
+use octofhir_fhirpath::{
+    FhirPathEngine, FhirPathValue,
+    model::{FhirSchemaModelProvider, ModelProvider},
+    utils,
+};
 use octofhir_fhirschema::PackageSpec;
 use serde_json::Value;
 use std::sync::Arc;
@@ -49,7 +53,10 @@ impl FhirPathEngineFactory {
 
     /// Create a new FHIRPath engine factory with async FHIR schema provider
     pub async fn with_config_async(config: FhirEngineConfig) -> Result<Self> {
-        info!("Initializing async FHIRPath engine factory with FHIR {} schema provider", config.fhir_version);
+        info!(
+            "Initializing async FHIRPath engine factory with FHIR {} schema provider",
+            config.fhir_version
+        );
 
         // Parse FHIR version
         let fhir_version = match config.fhir_version.as_str() {
@@ -57,7 +64,10 @@ impl FhirPathEngineFactory {
             "R4B" => FhirVersion::R4B,
             "R5" => FhirVersion::R5,
             _ => {
-                return Err(anyhow!("Unknown FHIR version '{}'. Supported versions: R4, R4B, R5", config.fhir_version));
+                return Err(anyhow!(
+                    "Unknown FHIR version '{}'. Supported versions: R4, R4B, R5",
+                    config.fhir_version
+                ));
             }
         };
 
@@ -67,7 +77,10 @@ impl FhirPathEngineFactory {
             if let Some((name, version)) = package.split_once('@') {
                 package_specs.push(PackageSpec::registry(name, version));
             } else {
-                return Err(anyhow!("Invalid package format '{}', expected 'name@version'", package));
+                return Err(anyhow!(
+                    "Invalid package format '{}', expected 'name@version'",
+                    package
+                ));
             }
         }
 
@@ -88,7 +101,10 @@ impl FhirPathEngineFactory {
 
         let model_provider: Arc<dyn ModelProvider> = Arc::new(provider);
 
-        info!("FHIRPath engine factory initialized successfully with FHIR {} schema provider", config.fhir_version);
+        info!(
+            "FHIRPath engine factory initialized successfully with FHIR {} schema provider",
+            config.fhir_version
+        );
 
         Ok(Self {
             model_provider,
@@ -112,12 +128,14 @@ impl FhirPathEngineFactory {
         }
 
         let engine = self.create_engine().await?;
-        
+
         // Convert serde_json::Value to sonic_rs::Value using octofhir-fhirpath utils
         let sonic_resource = utils::serde_to_sonic(&resource)
             .map_err(|e| anyhow!("Failed to convert resource to sonic_rs::Value: {}", e))?;
-        
-        engine.evaluate(expression, sonic_resource).await
+
+        engine
+            .evaluate(expression, sonic_resource)
+            .await
             .map_err(|e| {
                 warn!("FHIRPath evaluation failed: {}", e);
                 anyhow!("FHIRPath evaluation error: {}", e)
@@ -171,22 +189,29 @@ pub struct EngineInfo {
 }
 
 /// Global shared instance of the FHIRPath engine factory
-static SHARED_FACTORY: tokio::sync::OnceCell<FhirPathEngineFactory> = tokio::sync::OnceCell::const_new();
+static SHARED_FACTORY: tokio::sync::OnceCell<FhirPathEngineFactory> =
+    tokio::sync::OnceCell::const_new();
 
 /// Get the global shared FHIRPath engine factory instance
 pub async fn get_shared_engine() -> Result<&'static FhirPathEngineFactory> {
-    SHARED_FACTORY.get_or_try_init(|| async {
-        FhirPathEngineFactory::with_config_async(FhirEngineConfig::default()).await
-    }).await
+    SHARED_FACTORY
+        .get_or_try_init(|| async {
+            FhirPathEngineFactory::with_config_async(FhirEngineConfig::default()).await
+        })
+        .await
 }
 
 /// Initialize the shared FHIRPath engine factory with configuration
 pub async fn initialize_shared_engine_with_config(config: FhirEngineConfig) -> Result<()> {
-    info!("Initializing global shared FHIRPath engine factory with config: {:?}", config);
+    info!(
+        "Initializing global shared FHIRPath engine factory with config: {:?}",
+        config
+    );
 
     let factory = FhirPathEngineFactory::with_config_async(config).await?;
 
-    SHARED_FACTORY.set(factory)
+    SHARED_FACTORY
+        .set(factory)
         .map_err(|_| anyhow!("Shared FHIRPath engine factory already initialized"))?;
 
     info!("Global shared FHIRPath engine factory initialized successfully");
@@ -227,7 +252,7 @@ mod tests {
         // Test should not panic, result depends on FHIRPath implementation
         match result {
             Ok(_) => println!("Evaluation successful"),
-            Err(e) => println!("Evaluation failed: {}", e),
+            Err(e) => println!("Evaluation failed: {e}"),
         }
     }
 
@@ -258,7 +283,7 @@ mod tests {
         let result = factory.parse_expression("Patient.name").await;
         match result {
             Ok(_) => println!("Parse successful"),
-            Err(e) => println!("Parse failed: {}", e),
+            Err(e) => println!("Parse failed: {e}"),
         }
 
         // Test empty expression

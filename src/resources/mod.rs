@@ -2,5 +2,5 @@
 //!
 //! Resources provide read-only access to schemas, examples, and documentation
 
-pub mod schemas;
 pub mod examples;
+pub mod schemas;

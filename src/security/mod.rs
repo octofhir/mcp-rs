@@ -4,8 +4,8 @@ pub mod auth;
 pub mod validation;
 
 use auth::{AuthConfig, Authenticator};
-use validation::{ValidationConfig, InputValidator};
 use std::collections::HashSet;
+use validation::{InputValidator, ValidationConfig};
 
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
@@ -68,5 +68,5 @@ impl SecurityProvider {
     }
 }
 
-pub use auth::{AuthenticatedRequest, AuthMethod};
+pub use auth::{AuthMethod, AuthenticatedRequest};
 pub use validation::RequestSanitizer;

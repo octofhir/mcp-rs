@@ -16,9 +16,9 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let _cli = Cli::parse();
-    
+
     println!("OctoFHIR MCP Benchmark Tool v{}", octofhir_mcp::VERSION);
     println!("Benchmarking functionality will be implemented in later phases");
-    
+
     Ok(())
 }

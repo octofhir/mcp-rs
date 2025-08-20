@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -118,7 +118,7 @@ impl InputValidator {
 
     fn check_blacklisted_functions(&self, expression: &str) -> Result<()> {
         let expression_lower = expression.to_lowercase();
-        
+
         for blacklisted in &self.config.blacklisted_functions {
             if expression_lower.contains(&blacklisted.to_lowercase()) {
                 return Err(anyhow!(
@@ -127,15 +127,14 @@ impl InputValidator {
                 ));
             }
         }
-        
+
         Ok(())
     }
 
     fn sanitize_expression(&self, expression: &str) -> String {
         expression
             .trim()
-            .replace('\r', "")
-            .replace('\0', "")
+            .replace(['\r', '\0'], "")
             .chars()
             .filter(|&c| c.is_ascii_graphic() || c.is_ascii_whitespace())
             .collect()
@@ -188,8 +187,7 @@ impl InputValidator {
             }
             Value::String(s) => {
                 *s = s
-                    .replace('\0', "")
-                    .replace('\r', "")
+                    .replace(['\0', '\r'], "")
                     .chars()
                     .filter(|&c| c != '\u{FEFF}') // Remove BOM
                     .collect();

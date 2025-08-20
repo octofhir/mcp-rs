@@ -1,170 +1,129 @@
-//! OctoFHIR MCP Server - Main binary
+//! OctoFHIR MCP Server - Main binary using rmcp SDK
+//!
+//! This is the primary binary for the OctoFHIR MCP server, now powered by the
+//! official rmcp SDK for better protocol compliance and maintainability.
 
 use anyhow::Result;
-use clap::Parser;
-use octofhir_mcp::{McpServer, ServerConfig};
-use octofhir_mcp::transport::{Transport, stdio::StdioTransport, http::HttpTransport};
-use tokio::signal;
-use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use clap::{Parser, Subcommand};
+use octofhir_mcp::{server::demonstrate_tools, transport::TransportFactory};
+use tracing::{Level, info};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "octofhir-mcp")]
 #[command(about = "OctoFHIR Model Context Protocol Server")]
-#[command(version)]
+#[command(version = octofhir_mcp::VERSION)]
 struct Cli {
-    /// Host to bind to for HTTP transport
-    #[arg(long, default_value = "localhost")]
-    host: String,
+    #[command(subcommand)]
+    command: Commands,
 
-    /// Port to bind to for HTTP transport
-    #[arg(long, default_value = "3000")]
-    port: u16,
-
-    /// Log level (trace, debug, info, warn, error)
+    /// Set the log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     log_level: String,
+}
 
-    /// Transport mode: stdio, http, or both
-    #[arg(long, default_value = "stdio", value_parser = ["stdio", "http", "both"])]
-    transport: String,
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the MCP server with stdio transport (recommended for MCP clients)
+    Stdio,
+    /// Start the MCP server with HTTP streamable transport
+    Http {
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
 
-    /// FHIR version to use (R4, R4B, R5)
-    #[arg(long, default_value = "R4", value_parser = ["R4", "R4B", "R5"])]
-    fhir_version: String,
-
-    /// Additional FHIR packages to install (format: name@version)
-    #[arg(long, value_delimiter = ',')]
-    additional_packages: Vec<String>,
+        /// Port to bind to
+        #[arg(short, long, default_value_t = 3000)]
+        port: u16,
+    },
+    /// Demonstrate FHIRPath tools functionality
+    Demo,
+    /// Show server information
+    Info,
+    /// Validate server configuration
+    Validate,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize tracing - reduce verbosity for stdio transport
-    if cli.transport == "stdio" {
-        tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_target(false)
-                    .with_thread_ids(false)
-                    .with_file(false)
-                    .with_line_number(false)
-                    .with_writer(std::io::stderr),  // Write logs to stderr to avoid interfering with MCP communication on stdout
-            )
-            .with(tracing_subscriber::EnvFilter::new(&cli.log_level))
-            .init();
-    } else {
-        tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_target(false)
-                    .with_thread_ids(true)
-                    .with_file(true)
-                    .with_line_number(true),
-            )
-            .with(tracing_subscriber::EnvFilter::new(&cli.log_level))
-            .init();
-    }
-
-    info!("Starting OctoFHIR MCP Server v{}", octofhir_mcp::VERSION);
-
-    // Create server configuration
-    let config = ServerConfig {
-        host: cli.host.clone(),
-        port: cli.port,
-        log_level: cli.log_level,
-        http_transport: cli.transport == "http" || cli.transport == "both",
-        stdio_transport: cli.transport == "stdio" || cli.transport == "both",
-        fhir_version: cli.fhir_version,
-        additional_packages: cli.additional_packages,
+    // Initialize logging
+    let log_level = match cli.log_level.to_lowercase().as_str() {
+        "trace" => Level::TRACE,
+        "debug" => Level::DEBUG,
+        "info" => Level::INFO,
+        "warn" => Level::WARN,
+        "error" => Level::ERROR,
+        _ => Level::INFO,
     };
 
-    // Create MCP server instance
-    let server = McpServer::new(config.clone());
+    let filter = EnvFilter::builder()
+        .with_default_directive(log_level.into())
+        .from_env_lossy();
 
-    // Handle shutdown signals
-    let shutdown_signal = async {
-        match signal::ctrl_c().await {
-            Ok(_) => info!("Received Ctrl+C, shutting down..."),
-            Err(err) => error!("Unable to listen for shutdown signal: {}", err),
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    match cli.command {
+        Commands::Stdio => {
+            info!("Starting OctoFHIR MCP Server with stdio transport");
+            info!("Protocol version: 2025-06-18");
+            info!("Available tools: fhirpath_evaluate, fhirpath_parse, fhirpath_extract");
+
+            let transport = TransportFactory::create_stdio();
+            transport.start().await?;
         }
-    };
+        Commands::Http { host, port } => {
+            info!(
+                "Starting OctoFHIR MCP Server with HTTP transport on {}:{}",
+                host, port
+            );
+            info!("Protocol version: 2025-06-18");
+            info!("Available tools: fhirpath_evaluate, fhirpath_parse, fhirpath_extract");
 
-    // Start transport based on configuration
-    match cli.transport.as_str() {
-        "stdio" => {
-            info!("Starting stdio transport for MCP client integration");
-            let transport = StdioTransport::new();
+            let transport = TransportFactory::create_http(&host, port);
+            transport.start().await?;
+        }
+        Commands::Demo => {
+            info!("Demonstrating FHIRPath tools functionality");
+            demonstrate_tools().await?;
+            info!("Demo completed successfully");
+        }
+        Commands::Info => {
+            println!("OctoFHIR MCP Server");
+            println!("Version: {}", octofhir_mcp::VERSION);
+            println!("Protocol: MCP 2025-06-18");
+            println!("SDK: rmcp v0.6");
+            println!();
+            println!("Available Tools:");
+            println!("  - fhirpath_evaluate: Evaluate FHIRPath expressions against FHIR resources");
+            println!("  - fhirpath_parse: Parse and validate FHIRPath expressions");
+            println!("  - fhirpath_extract: Extract data from FHIR resources using FHIRPath");
+            println!();
+            println!("Transports:");
+            println!("  - Stdio transport (recommended for MCP clients)");
+            println!("  - HTTP Streamable transport (for web applications)");
+            println!();
+            println!("Features:");
+            println!("  - High-performance FHIRPath evaluation");
+            println!("  - FHIR R4/R5 schema support");
+            println!("  - Comprehensive error diagnostics");
+            println!("  - Performance metrics and complexity analysis");
+        }
+        Commands::Validate => {
+            info!("Validating server configuration...");
 
-            tokio::select! {
-                result = transport.start(Box::new(server.clone())) => {
-                    match result {
-                        Ok(_) => info!("Stdio transport completed successfully"),
-                        Err(e) => error!("Stdio transport error: {}", e),
-                    }
-                }
-                _ = shutdown_signal => {
-                    info!("Shutdown signal received, stopping stdio transport");
-                    if let Err(e) = transport.shutdown().await {
-                        error!("Error during stdio transport shutdown: {}", e);
-                    }
-                }
-            }
-        },
-        "http" => {
-            info!("Starting HTTP transport on {}:{}", cli.host, cli.port);
-            let transport = HttpTransport::new(cli.port);
+            // Test FHIRPath engine initialization
+            octofhir_mcp::fhirpath_engine::initialize_shared_engine().await?;
+            info!("✓ FHIRPath engine initialized successfully");
 
-            tokio::select! {
-                result = transport.start(Box::new(server.clone())) => {
-                    match result {
-                        Ok(_) => info!("HTTP transport completed successfully"),
-                        Err(e) => error!("HTTP transport error: {}", e),
-                    }
-                }
-                _ = shutdown_signal => {
-                    info!("Shutdown signal received, stopping HTTP transport");
-                    if let Err(e) = transport.shutdown().await {
-                        error!("Error during HTTP transport shutdown: {}", e);
-                    }
-                }
-            }
-        },
-        "both" => {
-            info!("Starting both stdio and HTTP transports");
-            let stdio_transport = StdioTransport::new();
-            let http_transport = HttpTransport::new(cli.port);
+            // Test tool demonstration
+            demonstrate_tools().await?;
+            info!("✓ All tools validated successfully");
 
-            let server_clone = server.clone();
-            let stdio_task = tokio::spawn(async move {
-                if let Err(e) = stdio_transport.start(Box::new(server_clone)).await {
-                    error!("Stdio transport error: {}", e);
-                }
-            });
-
-            let http_task = tokio::spawn(async move {
-                if let Err(e) = http_transport.start(Box::new(server.clone())).await {
-                    error!("HTTP transport error: {}", e);
-                }
-            });
-
-            tokio::select! {
-                _ = stdio_task => info!("Stdio transport task completed"),
-                _ = http_task => info!("HTTP transport task completed"),
-                _ = shutdown_signal => {
-                    info!("Shutdown signal received, stopping all transports");
-                    // Transports will be dropped and cleaned up automatically
-                }
-            }
-        },
-        _ => {
-            error!("Invalid transport mode: {}", cli.transport);
-            return Err(anyhow::Error::msg("Invalid transport mode"));
+            info!("✓ Server configuration is valid");
         }
     }
 
-    info!("OctoFHIR MCP Server shutdown complete");
     Ok(())
 }

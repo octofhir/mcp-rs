@@ -3,13 +3,15 @@
 pub mod health;
 
 use anyhow::Result;
-use health::{HealthMonitor, HealthResponse, MonitoringConfig, PerformanceMetrics, ReadinessResponse};
+use health::{
+    HealthMonitor, HealthResponse, MonitoringConfig, PerformanceMetrics, ReadinessResponse,
+};
 use serde::Serialize;
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -66,7 +68,7 @@ impl MetricsProvider {
     pub async fn get_metrics_snapshot(&self) -> MetricsSnapshot {
         let performance = self.get_performance_metrics();
         let custom_metrics = self.get_custom_metrics().await;
-        
+
         MetricsSnapshot {
             timestamp: std::time::SystemTime::now(),
             performance,
@@ -77,54 +79,52 @@ impl MetricsProvider {
     pub async fn get_prometheus_metrics(&self) -> PrometheusMetrics {
         let performance = self.get_performance_metrics();
         let custom_metrics = self.get_custom_metrics().await;
-        
+
         let mut prometheus_data = String::new();
-        
+
         // Performance metrics
         prometheus_data.push_str(&format!(
             "# HELP octofhir_requests_total Total number of requests\n# TYPE octofhir_requests_total counter\noctofhir_requests_total {}\n",
             performance.total_requests
         ));
-        
+
         prometheus_data.push_str(&format!(
             "# HELP octofhir_requests_per_minute Current requests per minute\n# TYPE octofhir_requests_per_minute gauge\noctofhir_requests_per_minute {}\n",
             performance.requests_per_minute
         ));
-        
+
         prometheus_data.push_str(&format!(
             "# HELP octofhir_response_time_avg_ms Average response time in milliseconds\n# TYPE octofhir_response_time_avg_ms gauge\noctofhir_response_time_avg_ms {}\n",
             performance.average_response_time_ms
         ));
-        
+
         prometheus_data.push_str(&format!(
             "# HELP octofhir_response_time_p95_ms 95th percentile response time in milliseconds\n# TYPE octofhir_response_time_p95_ms gauge\noctofhir_response_time_p95_ms {}\n",
             performance.p95_response_time_ms
         ));
-        
+
         prometheus_data.push_str(&format!(
             "# HELP octofhir_error_rate_percent Error rate percentage\n# TYPE octofhir_error_rate_percent gauge\noctofhir_error_rate_percent {}\n",
             performance.error_rate_percent
         ));
-        
+
         prometheus_data.push_str(&format!(
             "# HELP octofhir_active_connections Current active connections\n# TYPE octofhir_active_connections gauge\noctofhir_active_connections {}\n",
             performance.active_connections
         ));
-        
+
         prometheus_data.push_str(&format!(
             "# HELP octofhir_memory_usage_mb Memory usage in megabytes\n# TYPE octofhir_memory_usage_mb gauge\noctofhir_memory_usage_mb {}\n",
             performance.memory_usage_mb
         ));
-        
+
         // Custom metrics
         for (name, value) in custom_metrics {
             prometheus_data.push_str(&format!(
-                "# HELP octofhir_{name} Custom metric {name}\n# TYPE octofhir_{name} gauge\noctofhir_{name} {value}\n",
-                name = name,
-                value = value
+                "# HELP octofhir_{name} Custom metric {name}\n# TYPE octofhir_{name} gauge\noctofhir_{name} {value}\n"
             ));
         }
-        
+
         PrometheusMetrics {
             content_type: "text/plain; version=0.0.4; charset=utf-8".to_string(),
             data: prometheus_data,
@@ -133,7 +133,8 @@ impl MetricsProvider {
 
     pub fn record_request(&self, response_time: Duration, is_error: bool) {
         if self.config.enable_metrics {
-            self.health_monitor.record_request(response_time.as_millis() as f64, is_error);
+            self.health_monitor
+                .record_request(response_time.as_millis() as f64, is_error);
         }
     }
 
@@ -192,19 +193,19 @@ impl MetricsProvider {
 
         let health_monitor = self.health_monitor.clone();
         let interval_seconds = self.config.health_check_interval_seconds;
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(interval_seconds));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if let Err(e) = health_monitor.run_system_health_checks().await {
                     tracing::error!("Periodic health check failed: {}", e);
                 }
             }
         });
-        
+
         tracing::info!("Started periodic health checks every {}s", interval_seconds);
         Ok(())
     }
@@ -216,7 +217,10 @@ impl MetricsProvider {
 
 impl Default for MetricsProvider {
     fn default() -> Self {
-        Self::new(MonitoringConfig::default(), env!("CARGO_PKG_VERSION").to_string())
+        Self::new(
+            MonitoringConfig::default(),
+            env!("CARGO_PKG_VERSION").to_string(),
+        )
     }
 }
 
@@ -228,7 +232,7 @@ mod tests {
     async fn test_metrics_provider_creation() {
         let config = MonitoringConfig::default();
         let provider = MetricsProvider::new(config, "test-0.1.0".to_string());
-        
+
         let health = provider.get_health_status().await;
         assert_eq!(health.version, "test-0.1.0");
     }
@@ -236,10 +240,10 @@ mod tests {
     #[tokio::test]
     async fn test_custom_metrics() {
         let provider = MetricsProvider::default();
-        
+
         provider.increment_custom_metric("test_counter", 5).await;
         provider.set_custom_metric("test_gauge", 42).await;
-        
+
         let metrics = provider.get_custom_metrics().await;
         assert_eq!(metrics.get("test_counter"), Some(&5.0));
         assert_eq!(metrics.get("test_gauge"), Some(&42.0));
@@ -249,19 +253,22 @@ mod tests {
     async fn test_prometheus_metrics() {
         let provider = MetricsProvider::default();
         provider.increment_custom_metric("test_metric", 10).await;
-        
+
         let prometheus = provider.get_prometheus_metrics().await;
         assert!(prometheus.data.contains("octofhir_test_metric 10"));
-        assert_eq!(prometheus.content_type, "text/plain; version=0.0.4; charset=utf-8");
+        assert_eq!(
+            prometheus.content_type,
+            "text/plain; version=0.0.4; charset=utf-8"
+        );
     }
 
     #[test]
     fn test_request_recording() {
         let provider = MetricsProvider::default();
-        
+
         provider.record_request(Duration::from_millis(100), false);
         provider.record_request(Duration::from_millis(200), true);
-        
+
         let metrics = provider.get_performance_metrics();
         assert!(metrics.total_requests >= 2);
     }

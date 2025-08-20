@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use jsonwebtoken::{decode, DecodingKey, TokenData, Validation};
+use anyhow::{Result, anyhow};
+use jsonwebtoken::{DecodingKey, TokenData, Validation, decode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -160,7 +160,7 @@ mod tests {
         let config = AuthConfig::default();
         let auth = Authenticator::new(config);
         let result = auth.bypass_for_stdio();
-        
+
         matches!(result.authenticated_by, AuthMethod::Bypass);
         assert_eq!(result.subject, "stdio");
     }

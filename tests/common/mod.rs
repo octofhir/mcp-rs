@@ -1,6 +1,6 @@
 use anyhow::Result;
-use octofhir_mcp::transport::{McpMessage, ToolsCallParams, JsonRpcMessage};
-use serde_json::{json, Value};
+use octofhir_mcp::transport::{JsonRpcMessage, McpMessage, ToolsCallParams};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::sync::mpsc;
@@ -166,10 +166,7 @@ impl MockMcpClient {
 
     /// Wait for a response message
     pub async fn wait_for_response(&mut self) -> Result<Option<JsonRpcMessage>> {
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            self.receiver.recv()
-        ).await {
+        match tokio::time::timeout(std::time::Duration::from_secs(5), self.receiver.recv()).await {
             Ok(Some(message)) => {
                 self.messages_received.push(message.clone());
                 Ok(Some(message))
@@ -258,7 +255,8 @@ impl TestHttpClient {
     }
 
     pub fn with_auth_header(mut self, token: String) -> Self {
-        self.default_headers.insert("Authorization".to_string(), format!("Bearer {}", token));
+        self.default_headers
+            .insert("Authorization".to_string(), format!("Bearer {}", token));
         self
     }
 
@@ -281,7 +279,11 @@ impl TestHttpClient {
         if status.is_success() {
             Ok(body)
         } else {
-            Err(anyhow::anyhow!("HTTP request failed with status {}: {}", status, body))
+            Err(anyhow::anyhow!(
+                "HTTP request failed with status {}: {}",
+                status,
+                body
+            ))
         }
     }
 
@@ -302,7 +304,11 @@ impl TestHttpClient {
         if status.is_success() {
             Ok(body)
         } else {
-            Err(anyhow::anyhow!("HTTP request failed with status {}: {}", status, body))
+            Err(anyhow::anyhow!(
+                "HTTP request failed with status {}: {}",
+                status,
+                body
+            ))
         }
     }
 
@@ -316,7 +322,11 @@ impl TestHttpClient {
         if status.is_success() {
             Ok(body)
         } else {
-            Err(anyhow::anyhow!("Health check failed with status {}: {}", status, body))
+            Err(anyhow::anyhow!(
+                "Health check failed with status {}: {}",
+                status,
+                body
+            ))
         }
     }
 
@@ -330,7 +340,11 @@ impl TestHttpClient {
         if status.is_success() {
             Ok(body)
         } else {
-            Err(anyhow::anyhow!("Readiness check failed with status {}: {}", status, body))
+            Err(anyhow::anyhow!(
+                "Readiness check failed with status {}: {}",
+                status,
+                body
+            ))
         }
     }
 
@@ -343,7 +357,10 @@ impl TestHttpClient {
         if status.is_success() {
             Ok(response.text().await?)
         } else {
-            Err(anyhow::anyhow!("Metrics request failed with status {}", status))
+            Err(anyhow::anyhow!(
+                "Metrics request failed with status {}",
+                status
+            ))
         }
     }
 
@@ -357,7 +374,11 @@ impl TestHttpClient {
         if status.is_success() {
             Ok(body)
         } else {
-            Err(anyhow::anyhow!("SSE auth info request failed with status {}: {}", status, body))
+            Err(anyhow::anyhow!(
+                "SSE auth info request failed with status {}: {}",
+                status,
+                body
+            ))
         }
     }
 }
@@ -370,7 +391,11 @@ pub mod assertions {
     pub fn assert_success_response(message: &JsonRpcMessage) {
         match message {
             JsonRpcMessage::Response { error, .. } => {
-                assert!(error.is_none(), "Expected success response, got error: {:?}", error);
+                assert!(
+                    error.is_none(),
+                    "Expected success response, got error: {:?}",
+                    error
+                );
             }
             _ => panic!("Expected response message, got: {:?}", message),
         }
@@ -401,16 +426,19 @@ pub mod assertions {
     /// Assert that FHIRPath evaluation result is valid
     pub fn assert_fhirpath_result(result: &Value) {
         assert_tool_result_structure(result, &["values", "types", "performance"]);
-        
+
         let values = result.get("values").unwrap();
         let types = result.get("types").unwrap();
-        
+
         assert!(values.is_array(), "Values should be an array");
         assert!(types.is_array(), "Types should be an array");
-        
+
         let values_len = values.as_array().unwrap().len();
         let types_len = types.as_array().unwrap().len();
-        assert_eq!(values_len, types_len, "Values and types arrays should have same length");
+        assert_eq!(
+            values_len, types_len,
+            "Values and types arrays should have same length"
+        );
     }
 
     /// Assert that health status is valid
@@ -428,13 +456,13 @@ pub mod assertions {
     /// Assert that metrics are in valid Prometheus format
     pub fn assert_prometheus_metrics_format(metrics: &str) {
         assert!(!metrics.is_empty(), "Metrics should not be empty");
-        
+
         // Check for basic Prometheus metric format
         let lines: Vec<&str> = metrics.lines().collect();
         let mut has_help = false;
         let mut has_type = false;
         let mut has_metric = false;
-        
+
         for line in lines {
             if line.starts_with("# HELP") {
                 has_help = true;
@@ -443,10 +471,14 @@ pub mod assertions {
             } else if !line.starts_with("#") && !line.trim().is_empty() {
                 has_metric = true;
                 // Basic metric line format check
-                assert!(line.contains(" "), "Metric line should contain space: {}", line);
+                assert!(
+                    line.contains(" "),
+                    "Metric line should contain space: {}",
+                    line
+                );
             }
         }
-        
+
         assert!(has_help, "Metrics should contain HELP comments");
         assert!(has_type, "Metrics should contain TYPE comments");
         assert!(has_metric, "Metrics should contain actual metric values");
@@ -471,10 +503,7 @@ pub mod performance {
     }
 
     /// Run a function multiple times and collect timing statistics
-    pub async fn benchmark_async<F, Fut, T>(
-        iterations: usize,
-        f: F,
-    ) -> BenchmarkResults
+    pub async fn benchmark_async<F, Fut, T>(iterations: usize, f: F) -> BenchmarkResults
     where
         F: Fn() -> Fut + Copy,
         Fut: std::future::Future<Output = Result<T>>,
@@ -509,16 +538,23 @@ pub mod performance {
         pub fn new(mut times: Vec<Duration>, errors: usize) -> Self {
             times.sort();
             let total_iterations = times.len();
-            
+
             let min_time = times.first().copied().unwrap_or_default();
             let max_time = times.last().copied().unwrap_or_default();
-            
+
             let total_nanos: u128 = times.iter().map(|d| d.as_nanos()).sum();
-            let average_time = Duration::from_nanos((total_nanos / total_iterations as u128) as u64);
-            
+            let average_time =
+                Duration::from_nanos((total_nanos / total_iterations as u128) as u64);
+
             let median_time = times.get(total_iterations / 2).copied().unwrap_or_default();
-            let p95_time = times.get((total_iterations as f64 * 0.95) as usize).copied().unwrap_or_default();
-            let p99_time = times.get((total_iterations as f64 * 0.99) as usize).copied().unwrap_or_default();
+            let p95_time = times
+                .get((total_iterations as f64 * 0.95) as usize)
+                .copied()
+                .unwrap_or_default();
+            let p99_time = times
+                .get((total_iterations as f64 * 0.99) as usize)
+                .copied()
+                .unwrap_or_default();
 
             Self {
                 total_iterations,
