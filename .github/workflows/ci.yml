@@ -260,7 +260,6 @@ jobs:
         build-check,
         documentation,
         dependency-check,
-        msrv-check,
         docker-build-test,
         just-commands-test,
       ]
@@ -277,7 +276,6 @@ jobs:
           echo "| Build Check | ${{ needs.build-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Documentation | ${{ needs.documentation.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Dependencies | ${{ needs.dependency-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| MSRV Check | ${{ needs.msrv-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker Build | ${{ needs.docker-build-test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Just Commands | ${{ needs.just-commands-test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
 
