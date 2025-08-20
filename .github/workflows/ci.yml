@@ -134,7 +134,7 @@ jobs:
       - name: Build binaries
         env:
           OPENSSL_STATIC: ${{ contains(matrix.target, 'musl') && '1' || '' }}
-          OPENSSL_NO_PKG_CONFIG: ${{ contains(matrix.target, 'musl') && '1' || '' }}
+          OPENSSL_VENDOR: ${{ contains(matrix.target, 'musl') && '1' || '' }}
         run: |
           cross build --release --target ${{ matrix.target }} --all-features
 
