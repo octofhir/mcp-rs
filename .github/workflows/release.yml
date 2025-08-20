@@ -194,9 +194,6 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
           CARGO_PROFILE_RELEASE_PANIC: "abort"
           CARGO_PROFILE_RELEASE_STRIP: "symbols"
-          # Use vendored OpenSSL for cross-compilation
-          OPENSSL_STATIC: ${{ matrix.cross && '1' || '' }}
-          OPENSSL_VENDOR: ${{ matrix.cross && '1' || '' }}
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }} --bin octofhir-mcp
