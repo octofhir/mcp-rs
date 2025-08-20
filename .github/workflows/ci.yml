@@ -285,7 +285,6 @@ jobs:
         test,
         build-check,
         documentation,
-        dependency-check,
         docker-build-test,
         just-commands-test,
       ]
