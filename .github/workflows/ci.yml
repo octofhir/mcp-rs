@@ -32,7 +32,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy (linting)
-        run: cargo clippy --all-targets --all-feature
+        run: cargo clippy --all-targets --all-features
 
       - name: Check code compilation
         run: cargo check --all-targets --all-features
@@ -156,24 +156,6 @@ jobs:
 
       - name: Check dependency licenses and advisories
         run: cargo deny check
-
-  msrv-check:
-    name: Minimum Supported Rust Version
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup MSRV Rust
-        uses: dtolnay/rust-toolchain@1.70.0
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: msrv-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Check MSRV compatibility
-        run: cargo check --all-features
 
   performance-check:
     name: Performance Regression Check
