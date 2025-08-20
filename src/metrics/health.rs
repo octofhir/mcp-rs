@@ -493,7 +493,6 @@ mod tests {
 
         let health = monitor.get_health_status().await;
         assert_eq!(health.version, "test-0.1.0");
-        assert!(health.uptime_seconds >= 0);
     }
 
     #[tokio::test]
