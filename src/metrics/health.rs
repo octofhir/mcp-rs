@@ -391,10 +391,8 @@ impl HealthMonitor {
             .unwrap_or(1);
 
         if active_threads > 0 {
-            HealthCheck::healthy(format!(
-                "Thread pool operational: {active_threads} threads"
-            ))
-            .with_duration(start_time.elapsed())
+            HealthCheck::healthy(format!("Thread pool operational: {active_threads} threads"))
+                .with_duration(start_time.elapsed())
         } else {
             HealthCheck::unhealthy("Thread pool unavailable").with_duration(start_time.elapsed())
         }

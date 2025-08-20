@@ -439,15 +439,14 @@ The OctoFHIR MCP Server is part of the **OctoFHIR ecosystem** - a comprehensive 
 
 **Other OctoFHIR Projects:**
 - [octofhir/fhirpath-rs](https://github.com/octofhir/fhirpath-rs) - High-performance FHIRPath engine
-- [octofhir/fhir-tools](https://github.com/octofhir/fhir-tools) - FHIR validation and conversion tools
 
 ## 📞 Support
 
-- **Documentation**: [OctoFHIR Docs](https://docs.octofhir.org)
+<!-- - **Documentation**: [OctoFHIR Docs](https://docs.octofhir.org) -->
 - **Issues**: [GitHub Issues](https://github.com/octofhir/mcp-rs/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/octofhir/mcp-rs/discussions)
 - **Support Development**: [Boosty](https://boosty.to/octoshikari) 💖
-- **Email**: support@octofhir.org
+- **Email**: funyloony@gmail.com
 
 ## 🎯 Roadmap
 

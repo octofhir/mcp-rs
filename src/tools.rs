@@ -416,9 +416,7 @@ pub async fn fhirpath_extract(params: ExtractParams) -> Result<ExtractResult> {
             let value_types: Vec<String> = collection.iter().map(get_type_description).collect();
 
             // Generate simple paths for now
-            let paths: Vec<String> = (0..values.len())
-                .map(|i| format!("result[{i}]"))
-                .collect();
+            let paths: Vec<String> = (0..values.len()).map(|i| format!("result[{i}]")).collect();
 
             let format = params.format.as_deref().unwrap_or("values");
             let data = match format {

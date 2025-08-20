@@ -43,11 +43,8 @@ impl HttpTransportServer {
         // Create the streamable HTTP service with local session manager
         let session_manager = Arc::new(LocalSessionManager::default());
         let config = StreamableHttpServerConfig::default();
-        let service = StreamableHttpService::new(
-            || Ok(FhirPathToolServer),
-            session_manager,
-            config,
-        );
+        let service =
+            StreamableHttpService::new(|| Ok(FhirPathToolServer), session_manager, config);
 
         // Use hyper directly with the StreamableHttpService
         let bind_address: std::net::SocketAddr = format!("{}:{}", self.host, self.port).parse()?;

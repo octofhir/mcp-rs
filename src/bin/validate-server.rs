@@ -134,9 +134,7 @@ impl ValidationReport {
 
         let passed_count = self.results.iter().filter(|r| r.passed).count();
         let failed_count = self.results.len() - passed_count;
-        println!(
-            "📊 Summary: {passed_count} passed, {failed_count} failed"
-        );
+        println!("📊 Summary: {passed_count} passed, {failed_count} failed");
     }
 }
 
@@ -481,9 +479,7 @@ async fn validate_network_configuration(report: &mut ValidationReport, host: &st
         report.add_result(ValidationResult::warning(
             "Network",
             "Port Choice",
-            &format!(
-                "Using common port {port} - ensure no conflicts with other services"
-            ),
+            &format!("Using common port {port} - ensure no conflicts with other services"),
         ));
     }
 }
