@@ -107,8 +107,6 @@ jobs:
         target:
           - x86_64-unknown-linux-gnu
           - aarch64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -132,9 +130,6 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build binaries
-        env:
-          OPENSSL_STATIC: ${{ contains(matrix.target, 'musl') && '1' || '' }}
-          OPENSSL_VENDOR: ${{ contains(matrix.target, 'musl') && '1' || '' }}
         run: |
           cross build --release --target ${{ matrix.target }} --all-features
 
