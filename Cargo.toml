@@ -81,8 +81,11 @@ async-trait = "0.1"
 # HTTP client for rmcp SDK
 reqwest = { version = "0.12", features = ["json"] }
 
-# OpenSSL with vendored feature for cross-compilation
-openssl = { version = "0.10", features = ["vendored"] }
+# OpenSSL - use vendored only for cross-compilation
+openssl = { version = "0.10", features = [], optional = true }
+
+# OpenSSL vendored feature for cross-compilation
+openssl-vendored = { package = "openssl", version = "0.10", features = ["vendored"], optional = true }
 
 # Numeric conversion traits
 num-traits = "0.2"
@@ -107,12 +110,16 @@ proptest = "1.0"
 rstest = "0.26"
 
 [features]
-default = ["stdio-transport", "http-transport"]
+default = ["stdio-transport", "http-transport", "openssl"]
 http-transport = []
 stdio-transport = []
 websocket-transport = ["axum/ws"]
 security-full = []
 observability = []
+# Cross-compilation feature with vendored OpenSSL
+cross-compile = ["openssl-vendored"]
+# System OpenSSL (default for Docker builds)  
+openssl = ["dep:openssl"]
 
 # [[bench]]
 # name = "fhirpath_performance"

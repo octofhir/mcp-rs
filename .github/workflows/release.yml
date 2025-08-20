@@ -194,15 +194,11 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
           CARGO_PROFILE_RELEASE_PANIC: "abort"
           CARGO_PROFILE_RELEASE_STRIP: "symbols"
-          # Force vendored OpenSSL for cross-compilation
-          OPENSSL_STATIC: ${{ matrix.cross && '1' || '' }}
-          OPENSSL_VENDOR: ${{ matrix.cross && '1' || '' }}
-          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.cross && '1' || '' }}
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} --bin octofhir-mcp
-            cross build --release --target ${{ matrix.target }} --bin octofhir-benchmark
-            cross build --release --target ${{ matrix.target }} --bin octofhir-validate-server
+            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
+            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-benchmark
+            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-validate-server
           else
             cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
             cargo build --release --target ${{ matrix.target }} --bin octofhir-benchmark
