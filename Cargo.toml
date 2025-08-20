@@ -23,18 +23,11 @@ name = "octofhir-validate-server"
 path = "src/bin/validate-server.rs"
 
 [dependencies]
-# Local development dependencies - use ../fhirpath-rs
-# For production builds, switch to published crates
-octofhir-fhirpath = { path = "../fhirpath-rs/crates/octofhir-fhirpath" }
-octofhir-fhirpath-diagnostics = { path = "../fhirpath-rs/crates/fhirpath-diagnostics" }
-octofhir-fhirpath-tools = { path = "../fhirpath-rs/crates/fhirpath-tools" }
+octofhir-fhirpath = "0.4.15"
+octofhir-fhirpath-diagnostics = "0.4.15"
 octofhir-fhir-model = "0.1.1"
 octofhir-fhirschema = "0.2.3"
 
-# Production dependencies (commented out for local development)
-# octofhir-fhirpath = "0.1"
-# octofhir-fhirpath-diagnostics = "0.1"
-# octofhir-fhirpath-tools = "0.1"
 
 # Core async runtime
 tokio = { version = "1.0", features = ["full"] }
@@ -45,7 +38,7 @@ rmcp = { version = "0.6", features = [
     "server",
     "transport-streamable-http-server",
     "transport-sse-server",
-    "transport-io"
+    "transport-io",
 ] }
 rmcp-macros = "0.6"
 

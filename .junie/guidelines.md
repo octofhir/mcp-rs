@@ -18,7 +18,6 @@ The project uses **local development dependencies** from `../fhirpath-rs`:
 ```toml
 octofhir-fhirpath = { path = "../fhirpath-rs/crates/octofhir-fhirpath" }
 octofhir-fhirpath-diagnostics = { path = "../fhirpath-rs/crates/fhirpath-diagnostics" }
-octofhir-fhirpath-tools = { path = "../fhirpath-rs/crates/fhirpath-tools" }
 ```
 
 For production builds, switch to published crates (commented sections in Cargo.toml).
