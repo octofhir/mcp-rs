@@ -225,8 +225,8 @@ jobs:
 
       - name: Test Docker image
         run: |
-          docker run --rm octofhir-mcp:test info
-          docker run --rm octofhir-mcp:test validate || true
+          docker run --rm octofhir-mcp:test octofhir-mcp info
+          docker run --rm octofhir-mcp:test octofhir-mcp validate || true
 
   just-commands-test:
     name: Just Commands Test
