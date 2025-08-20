@@ -78,12 +78,8 @@ thiserror = "2"
 # Async traits
 async-trait = "0.1"
 
-# HTTP client for rmcp SDK (using rustls instead of OpenSSL)
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-
-# TLS support using rustls instead of OpenSSL
-rustls = "0.23"
-rustls-pemfile = "2.0"
+# HTTP client for rmcp SDK
+reqwest = { version = "0.12", features = ["json"] }
 
 # Numeric conversion traits
 num-traits = "0.2"
@@ -126,6 +122,7 @@ panic = "abort"
 
 [profile.dev]
 opt-level = 1
+
 
 [workspace]
 # This is a standalone repository - no workspace members

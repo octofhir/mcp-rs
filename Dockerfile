@@ -14,8 +14,12 @@ WORKDIR /app
 # Copy dependency files first for better caching
 COPY Cargo.toml Cargo.lock ./
 
-# Create a dummy main.rs to build dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+# Create a dummy main.rs and bin directory to build dependencies
+RUN mkdir -p src/bin && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "fn main() {}" > src/bin/octofhir-mcp.rs && \
+    echo "fn main() {}" > src/bin/benchmark.rs && \
+    echo "fn main() {}" > src/bin/validate-server.rs
 
 # Build dependencies (this layer will be cached unless Cargo.toml changes)
 RUN cargo build --release && rm -rf src
