@@ -21,9 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy the recipe and build dependencies
 COPY --from=planner /app/recipe.json recipe.json
-# Enable parallel compilation and optimize for build speed
-ENV CARGO_BUILD_JOBS=0
-ENV RUSTC_WRAPPER=""
+# Build dependencies with cargo-chef
 RUN cargo chef cook --release --recipe-path recipe.json
 
 FROM rust:1.88-slim AS builder
@@ -45,8 +43,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 # Build only the application (dependencies already cached)
-# Enable parallel compilation
-ENV CARGO_BUILD_JOBS=0
 RUN cargo build --release --bin octofhir-mcp
 
 # Runtime stage  
