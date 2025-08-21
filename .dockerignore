@@ -1,0 +1,43 @@
+# Build artifacts
+target/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# Test files
+tests/fixtures/
+
+# Development tools
+justfile
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Logs
+*.log
+
+# Cache directories
+.cache/
+node_modules/

@@ -1,0 +1,135 @@
+[package]
+name = "octofhir-mcp"
+version = "0.1.0"
+edition = "2024"
+description = "Model Context Protocol server for OctoFHIR ecosystem"
+authors = ["OctoFHIR Team<funyloony@gmail.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/octofhir/mcp-rs"
+keywords = ["fhir", "fhirpath", "mcp", "healthcare", "ai"]
+categories = ["api-bindings", "web-programming"]
+
+[[bin]]
+name = "octofhir-mcp"
+path = "src/bin/octofhir-mcp.rs"
+
+
+[dependencies]
+octofhir-fhirpath = "0.4.15"
+octofhir-fhirpath-diagnostics = "0.4.15"
+octofhir-fhir-model = "0.1.1"
+octofhir-fhirschema = "0.2.3"
+
+
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# MCP SDK
+# Official MCP Rust SDK: https://github.com/modelcontextprotocol/rust-sdk
+rmcp = { version = "0.6", features = [
+    "server",
+    "transport-streamable-http-server",
+    "transport-sse-server",
+    "transport-io",
+] }
+rmcp-macros = "0.6"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = { version = "1.0", features = ["derive"] }
+
+# Date and time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async utilities
+futures-util = "0.3"
+async-stream = "0.3"
+
+# HTTP server and client
+axum = { version = "0.8", features = ["ws"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["server"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "compression-gzip"] }
+
+# Authentication and security
+jsonwebtoken = "9.0"
+sha2 = "0.10"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Configuration and CLI
+clap = { version = "4", features = ["derive"] }
+# config = "0.14"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2"
+
+# Async traits
+async-trait = "0.1"
+# Numeric conversion traits
+num-traits = "0.2"
+# HTTP client for rmcp SDK - use native TLS on Windows
+reqwest = { version = "0.12", features = ["json"], default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.12", features = [
+    "json",
+    "native-tls",
+], default-features = false }
+
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { version = "0.12", features = [
+    "json",
+    "rustls-tls",
+], default-features = false }
+openssl = { version = "0.10", features = [] }
+
+
+# Caching and performance (commented out for minimal build)
+# moka = { version = "0.12", features = ["future"] }
+# dashmap = "5.0"
+
+# OpenTelemetry observability (commented out for minimal build)
+# opentelemetry = "0.21"
+# opentelemetry_sdk = "0.21"
+# tracing-opentelemetry = "0.22"
+
+# Compression (commented out for minimal build)
+# flate2 = "1.0"
+# brotli = "3.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { version = "0.7", features = ["html_reports"] }
+proptest = "1.0"
+rstest = "0.26"
+
+[features]
+default = ["stdio-transport", "http-transport"]
+http-transport = []
+stdio-transport = []
+websocket-transport = ["axum/ws"]
+security-full = []
+observability = []
+# Cross-compilation feature with vendored OpenSSL
+cross-compile = ["openssl/vendored"]
+
+# [[bench]]
+# name = "fhirpath_performance"
+# harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
+
+
+[workspace]
+# This is a standalone repository - no workspace members

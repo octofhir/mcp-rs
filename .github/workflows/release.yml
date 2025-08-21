@@ -1,0 +1,390 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: "Dry run (no actual release)"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.version.outputs.new_version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+
+      - name: Get current version
+        id: current_version
+        run: |
+          current=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "current_version=$current" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: version
+        run: |
+          case "${{ github.event.inputs.version_bump }}" in
+            patch)
+              cargo set-version --bump patch
+              ;;
+            minor)
+              cargo set-version --bump minor
+              ;;
+            major)
+              cargo set-version --bump major
+              ;;
+          esac
+          new_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          echo "New version: $new_version"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the last tag
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$last_tag" ]; then
+            echo "No previous tags found, generating changelog from all commits"
+            commits=$(git log --pretty=format:"- %s (%h)" --reverse)
+          else
+            echo "Generating changelog since $last_tag"
+            commits=$(git log ${last_tag}..HEAD --pretty=format:"- %s (%h)" --reverse)
+          fi
+
+          # Create changelog content
+          changelog="## What's Changed
+
+          $commits
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${last_tag}...v${{ steps.version.outputs.new_version }}"
+
+          # Save to file and output
+          echo "$changelog" > CHANGELOG_TEMP.md
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$changelog" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update Cargo.lock
+        run: cargo check
+
+      - name: Commit version bump
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to v${{ steps.version.outputs.new_version }} [ci skip]"
+          git push
+
+      - name: Create and push tag
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git tag -a "v${{ steps.version.outputs.new_version }}" -m "Release v${{ steps.version.outputs.new_version }} [ci skip]"
+          git push origin "v${{ steps.version.outputs.new_version }}"
+
+      - name: Dry run summary
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "# Dry Run Results" >> $GITHUB_STEP_SUMMARY
+          echo "**Version bump:** ${{ github.event.inputs.version_bump }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Current version:** ${{ steps.current_version.outputs.current_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**New version:** ${{ steps.version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Generated Changelog" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.changelog.outputs.changelog }}" >> $GITHUB_STEP_SUMMARY
+
+  build-binaries:
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || github.event_name == 'push')
+    strategy:
+      matrix:
+        include:
+          # Linux targets
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: octofhir-mcp-linux-x86_64
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: octofhir-mcp-linux-aarch64
+            cross: true
+          # macOS targets
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: octofhir-mcp-macos-x86_64
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: octofhir-mcp-macos-aarch64
+            cross: false
+          # Windows targets
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: octofhir-mcp-windows-x86_64
+            cross: false
+            ext: .exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install openssl pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl)/lib/pkgconfig" >> $GITHUB_ENV
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binaries
+        env:
+          # Enable optimized builds with better performance
+          CARGO_PROFILE_RELEASE_LTO: "fat"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+          CARGO_PROFILE_RELEASE_PANIC: "abort"
+          CARGO_PROFILE_RELEASE_STRIP: "symbols"
+        run: |
+          # Check if we need vendored OpenSSL (only for non-Windows platforms)
+          USE_VENDORED="false"
+          
+          # Windows uses native-tls (Schannel), so no vendored OpenSSL needed
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
+          # Use vendored OpenSSL for explicit cross-compilation on non-Windows
+          elif [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
+          # Detect cross-compilation by comparing host and target architectures
+          else
+            HOST_ARCH=$(uname -m)
+            if [ "$HOST_ARCH" = "arm64" ]; then
+              HOST_ARCH="aarch64"
+            elif [ "$HOST_ARCH" = "x86_64" ]; then
+              HOST_ARCH="x86_64"
+            fi
+            
+            TARGET_ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
+            
+            # Use vendored OpenSSL for cross-compilation
+            if [ "$HOST_ARCH" != "$TARGET_ARCH" ]; then
+              cargo build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
+            else
+              cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
+            fi
+          fi
+        shell: bash
+
+      - name: Prepare binaries
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/octofhir-mcp${{ matrix.ext }} dist/octofhir-mcp${{ matrix.ext }}
+          else
+            cp target/${{ matrix.target }}/release/octofhir-mcp dist/octofhir-mcp
+          fi
+        shell: bash
+
+      - name: Create archive
+        run: |
+          cd dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a ${{ matrix.name }}.zip octofhir-mcp${{ matrix.ext }}
+          else
+            tar czf ${{ matrix.name }}.tar.gz octofhir-mcp
+          fi
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}*
+
+  build-docker:
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --allow-insecure-entitlement=network.host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/octofhir-mcp:${{ needs.prepare-release.outputs.new_version }}
+            ghcr.io/${{ github.repository_owner }}/octofhir-mcp:latest
+          labels: |
+            org.opencontainers.image.title=OctoFHIR MCP Server
+            org.opencontainers.image.description=High-performance FHIRPath evaluation and FHIR tooling through Model Context Protocol
+            org.opencontainers.image.vendor=OctoFHIR Team
+            org.opencontainers.image.version=${{ needs.prepare-release.outputs.new_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.licenses=MIT OR Apache-2.0
+          # Multi-layer caching strategy for faster builds
+          cache-from: |
+            type=gha,scope=docker-release
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/octofhir-mcp:buildcache
+          cache-to: |
+            type=gha,scope=docker-release,mode=max
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/octofhir-mcp:buildcache,mode=max
+          # Enable inline cache export and build optimizations
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          # Target the runtime stage directly
+          target: runtime
+          # Enable advanced BuildKit features
+          provenance: false
+          sbom: false
+
+  create-release:
+    needs: [prepare-release, build-binaries, build-docker]
+    if: always() && needs.prepare-release.result == 'success' && needs.build-binaries.result == 'success' && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.prepare-release.outputs.new_version }}
+          name: Release v${{ needs.prepare-release.outputs.new_version }}
+          body: ${{ needs.prepare-release.outputs.changelog }}
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  create-release-on-tag:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-binaries, build-docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          # Get the previous tag
+          prev_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          current_tag=${GITHUB_REF#refs/tags/}
+
+          if [ -z "$prev_tag" ]; then
+            commits=$(git log --pretty=format:"- %s (%h)" --reverse)
+          else
+            commits=$(git log ${prev_tag}..${current_tag} --pretty=format:"- %s (%h)" --reverse)
+          fi
+
+          changelog="## What's Changed
+
+          $commits
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${prev_tag}...${current_tag}"
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$changelog" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

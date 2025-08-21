@@ -1,0 +1,292 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy (linting)
+        run: cargo clippy --all-targets --all-features
+
+      - name: Check code compilation
+        run: cargo check --all-targets --all-features
+
+      - name: Run security audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+  test:
+    name: Test Suite
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust-version: [stable]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust-version }}
+
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install openssl pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl)/lib/pkgconfig" >> $GITHUB_ENV
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ runner.os }}-${{ matrix.rust-version }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        run: cargo test --lib --all-features
+
+      - name: Run integration tests
+        run: cargo test --test integration_sdk --all-features
+
+  build-check:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binaries
+        run: |
+          cross build --release --target ${{ matrix.target }} --features cross-compile
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: docs-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check documentation
+        run: cargo doc --all-features --no-deps --document-private-items
+
+      - name: Test documentation examples
+        run: cargo test --doc --all-features
+
+  performance-check:
+    name: Performance Regression Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: perf-${{ hashFiles('**/Cargo.lock') }}
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+  docker-build-test:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --allow-insecure-entitlement=network.host
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: octofhir-mcp:test
+          # Multi-layer caching strategy for faster builds
+          cache-from: |
+            type=gha,scope=docker-build
+            type=registry,ref=ghcr.io/octofhir/mcp-rs:buildcache
+          cache-to: |
+            type=gha,scope=docker-build,mode=max
+          # Enable inline cache export
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          # Optimize build with better layer caching
+          target: runtime
+
+      - name: Test Docker image
+        run: |
+          docker run --rm octofhir-mcp:test octofhir-mcp info
+
+  just-commands-test:
+    name: Just Commands Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install Just
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: just-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test Just commands
+        run: |
+          just fmt-check
+          just lint
+          just build
+          just test
+          just docs-build
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs:
+      [
+        code-quality,
+        test,
+        build-check,
+        documentation,
+        docker-build-test,
+        just-commands-test,
+      ]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# CI Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Check | ${{ needs.build-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation | ${{ needs.documentation.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Build | ${{ needs.docker-build-test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Just Commands | ${{ needs.just-commands-test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check overall status
+        run: |
+          if [[ "${{ needs.code-quality.result }}" != "success" || 
+                "${{ needs.test.result }}" != "success" || 
+                "${{ needs.build-check.result }}" != "success" || 
+                "${{ needs.documentation.result }}" != "success" || 
+                "${{ needs.docker-build-test.result }}" != "success" || 
+                "${{ needs.just-commands-test.result }}" != "success" ]]; then
+            echo "❌ Some checks failed"
+            exit 1
+          else
+            echo "✅ All checks passed"
+          fi

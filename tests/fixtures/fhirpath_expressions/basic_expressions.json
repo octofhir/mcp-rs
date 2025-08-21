@@ -1,0 +1,88 @@
+{
+  "expressions": [
+    {
+      "name": "patient_name_family",
+      "expression": "Patient.name.family",
+      "description": "Extract family name from Patient resource",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": ["Doe"]
+        }
+      ]
+    },
+    {
+      "name": "patient_name_given_first",
+      "expression": "Patient.name.given.first()",
+      "description": "Extract first given name from Patient resource",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": ["John"]
+        }
+      ]
+    },
+    {
+      "name": "patient_telecom_phone",
+      "expression": "Patient.telecom.where(system='phone').value",
+      "description": "Extract phone numbers from Patient resource",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Patient",
+          "expected_values": ["+1-555-123-4567"]
+        }
+      ]
+    },
+    {
+      "name": "observation_value",
+      "expression": "Observation.valueQuantity.value",
+      "description": "Extract numeric value from Observation",
+      "expected_type": "decimal",
+      "test_cases": [
+        {
+          "resource_type": "Observation",
+          "expected_values": [36.5]
+        }
+      ]
+    },
+    {
+      "name": "observation_code_display",
+      "expression": "Observation.code.coding.display",
+      "description": "Extract code display from Observation",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Observation",
+          "expected_values": ["Body temperature"]
+        }
+      ]
+    },
+    {
+      "name": "bundle_entry_count",
+      "expression": "Bundle.entry.count()",
+      "description": "Count entries in Bundle",
+      "expected_type": "integer",
+      "test_cases": [
+        {
+          "resource_type": "Bundle",
+          "expected_values": [3]
+        }
+      ]
+    },
+    {
+      "name": "bundle_patient_names",
+      "expression": "Bundle.entry.resource.where(resourceType='Patient').name.family",
+      "description": "Extract patient family names from Bundle",
+      "expected_type": "string",
+      "test_cases": [
+        {
+          "resource_type": "Bundle",
+          "expected_values": ["Smith"]
+        }
+      ]
+    }
+  ]
+}

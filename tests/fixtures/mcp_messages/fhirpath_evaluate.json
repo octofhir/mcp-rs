@@ -1,0 +1,22 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "fhirpath_evaluate",
+    "arguments": {
+      "expression": "Patient.name.family",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "test-patient",
+        "name": [
+          {
+            "use": "official",
+            "family": "TestFamily",
+            "given": ["TestGiven"]
+          }
+        ]
+      }
+    }
+  }
+}
