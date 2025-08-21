@@ -72,10 +72,14 @@ thiserror = "2"
 # Async traits
 async-trait = "0.1"
 
-# HTTP client for rmcp SDK
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP client for rmcp SDK - use native TLS on Windows
+reqwest = { version = "0.12", features = ["json"], default-features = false }
 
-# OpenSSL with conditional vendored feature
+[target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.12", features = ["json", "native-tls"], default-features = false }
+
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 openssl = { version = "0.10", features = [] }
 
 # Numeric conversion traits

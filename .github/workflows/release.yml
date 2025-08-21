@@ -195,15 +195,15 @@ jobs:
           CARGO_PROFILE_RELEASE_PANIC: "abort"
           CARGO_PROFILE_RELEASE_STRIP: "symbols"
         run: |
-          # Check if we need vendored OpenSSL
+          # Check if we need vendored OpenSSL (only for non-Windows platforms)
           USE_VENDORED="false"
           
-          # Always use vendored OpenSSL for Windows (no system OpenSSL available)
+          # Windows uses native-tls (Schannel), so no vendored OpenSSL needed
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            USE_VENDORED="true"
-          # Use vendored OpenSSL for explicit cross-compilation
+            cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
+          # Use vendored OpenSSL for explicit cross-compilation on non-Windows
           elif [ "${{ matrix.cross }}" = "true" ]; then
-            USE_VENDORED="true"
+            cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
           # Detect cross-compilation by comparing host and target architectures
           else
             HOST_ARCH=$(uname -m)
@@ -215,20 +215,12 @@ jobs:
             
             TARGET_ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
             
+            # Use vendored OpenSSL for cross-compilation
             if [ "$HOST_ARCH" != "$TARGET_ARCH" ]; then
-              USE_VENDORED="true"
-            fi
-          fi
-          
-          # Build with appropriate features
-          if [ "$USE_VENDORED" = "true" ]; then
-            if [ "${{ matrix.cross }}" = "true" ]; then
-              cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
-            else
               cargo build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
+            else
+              cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
             fi
-          else
-            cargo build --release --target ${{ matrix.target }} --bin octofhir-mcp
           fi
         shell: bash
 
