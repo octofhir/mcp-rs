@@ -86,19 +86,6 @@ jobs:
       - name: Run integration tests
         run: cargo test --test integration_sdk --all-features
 
-      - name: Run all tests with coverage (Linux only)
-        if: matrix.os == 'ubuntu-latest' && matrix.rust-version == 'stable'
-        run: |
-          cargo install cargo-tarpaulin
-          cargo tarpaulin --all-features --workspace --timeout 120 --out xml
-
-      - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.rust-version == 'stable'
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./cobertura.xml
-          fail_ci_if_error: false
-
   build-check:
     name: Build Verification
     runs-on: ubuntu-latest
@@ -174,7 +161,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: perf-${{ hashFiles('**/Cargo.lock') }}
-
 
   security-scan:
     name: Security Scan
