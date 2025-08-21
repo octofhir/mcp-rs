@@ -15,7 +15,6 @@ name = "octofhir-mcp"
 path = "src/bin/octofhir-mcp.rs"
 
 
-
 [dependencies]
 octofhir-fhirpath = "0.4.15"
 octofhir-fhirpath-diagnostics = "0.4.15"
@@ -71,19 +70,24 @@ thiserror = "2"
 
 # Async traits
 async-trait = "0.1"
-
+# Numeric conversion traits
+num-traits = "0.2"
 # HTTP client for rmcp SDK - use native TLS on Windows
 reqwest = { version = "0.12", features = ["json"], default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-reqwest = { version = "0.12", features = ["json", "native-tls"], default-features = false }
+reqwest = { version = "0.12", features = [
+    "json",
+    "native-tls",
+], default-features = false }
 
 [target.'cfg(not(windows))'.dependencies]
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = [
+    "json",
+    "rustls-tls",
+], default-features = false }
 openssl = { version = "0.10", features = [] }
 
-# Numeric conversion traits
-num-traits = "0.2"
 
 # Caching and performance (commented out for minimal build)
 # moka = { version = "0.12", features = ["future"] }
