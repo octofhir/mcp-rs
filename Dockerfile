@@ -1,5 +1,33 @@
 # Multi-stage build for OctoFHIR MCP Server
+FROM rust:1.88-slim AS planner
+WORKDIR /app
+# Install cargo-chef for dependency caching
+RUN cargo install cargo-chef
+
+# Copy only the files needed for dependency resolution
+COPY Cargo.toml Cargo.lock ./
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM rust:1.88-slim AS cacher
+WORKDIR /app
+RUN cargo install cargo-chef
+
+# Install required system dependencies for building
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the recipe and build dependencies
+COPY --from=planner /app/recipe.json recipe.json
+# Enable parallel compilation and optimize for build speed
+ENV CARGO_BUILD_JOBS=0
+ENV RUSTC_WRAPPER=""
+RUN cargo chef cook --release --recipe-path recipe.json
+
 FROM rust:1.88-slim AS builder
+WORKDIR /app
 
 # Install required system dependencies
 RUN apt-get update && apt-get install -y \
@@ -8,28 +36,21 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /app
+# Copy pre-built dependencies from cacher stage
+COPY --from=cacher /app/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
 
-# Copy dependency files first for better caching
+# Copy source code and build configuration
 COPY Cargo.toml Cargo.lock ./
-
-# Create a dummy main.rs and bin directory to build dependencies
-RUN mkdir -p src/bin && \
-    echo "fn main() {}" > src/main.rs && \
-    echo "fn main() {}" > src/bin/octofhir-mcp.rs
-
-# Build dependencies (this layer will be cached unless Cargo.toml changes)
-RUN cargo build --release && rm -rf src
-
-# Copy source code
 COPY src ./src
 
-# Build the application
+# Build only the application (dependencies already cached)
+# Enable parallel compilation
+ENV CARGO_BUILD_JOBS=0
 RUN cargo build --release --bin octofhir-mcp
 
-# Runtime stage
-FROM debian:bookworm-slim
+# Runtime stage  
+FROM debian:bookworm-slim AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
