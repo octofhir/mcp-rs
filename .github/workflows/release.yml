@@ -195,24 +195,33 @@ jobs:
           CARGO_PROFILE_RELEASE_PANIC: "abort"
           CARGO_PROFILE_RELEASE_STRIP: "symbols"
         run: |
-          # Detect if we're cross-compiling by comparing host and target architectures
-          HOST_ARCH=$(uname -m)
-          if [ "$HOST_ARCH" = "arm64" ]; then
-            HOST_ARCH="aarch64"
-          elif [ "$HOST_ARCH" = "x86_64" ]; then
-            HOST_ARCH="x86_64"
-          fi
+          # Check if we need vendored OpenSSL
+          USE_VENDORED="false"
           
-          TARGET_ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
-          IS_CROSS_COMPILE="false"
-          
-          # Check if we're cross-compiling
-          if [ "${{ matrix.cross }}" = "true" ] || [ "$HOST_ARCH" != "$TARGET_ARCH" ]; then
-            IS_CROSS_COMPILE="true"
+          # Always use vendored OpenSSL for Windows (no system OpenSSL available)
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            USE_VENDORED="true"
+          # Use vendored OpenSSL for explicit cross-compilation
+          elif [ "${{ matrix.cross }}" = "true" ]; then
+            USE_VENDORED="true"
+          # Detect cross-compilation by comparing host and target architectures
+          else
+            HOST_ARCH=$(uname -m)
+            if [ "$HOST_ARCH" = "arm64" ]; then
+              HOST_ARCH="aarch64"
+            elif [ "$HOST_ARCH" = "x86_64" ]; then
+              HOST_ARCH="x86_64"
+            fi
+            
+            TARGET_ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
+            
+            if [ "$HOST_ARCH" != "$TARGET_ARCH" ]; then
+              USE_VENDORED="true"
+            fi
           fi
           
           # Build with appropriate features
-          if [ "$IS_CROSS_COMPILE" = "true" ]; then
+          if [ "$USE_VENDORED" = "true" ]; then
             if [ "${{ matrix.cross }}" = "true" ]; then
               cross build --release --target ${{ matrix.target }} --features cross-compile --bin octofhir-mcp
             else
