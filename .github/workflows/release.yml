@@ -100,22 +100,22 @@ jobs:
         run: cargo check
 
       - name: Commit version bump
-        if: ${{ !github.event.inputs.dry_run }}
+        if: github.event.inputs.dry_run != 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add Cargo.toml Cargo.lock
-          git commit -m "chore: bump version to v${{ steps.version.outputs.new_version }}"
+          git commit -m "chore: bump version to v${{ steps.version.outputs.new_version }} [ci skip]"
           git push
 
       - name: Create and push tag
-        if: ${{ !github.event.inputs.dry_run }}
+        if: github.event.inputs.dry_run != 'true'
         run: |
-          git tag -a "v${{ steps.version.outputs.new_version }}" -m "Release v${{ steps.version.outputs.new_version }}"
+          git tag -a "v${{ steps.version.outputs.new_version }}" -m "Release v${{ steps.version.outputs.new_version }} [ci skip]"
           git push origin "v${{ steps.version.outputs.new_version }}"
 
       - name: Dry run summary
-        if: ${{ github.event.inputs.dry_run }}
+        if: github.event.inputs.dry_run == 'true'
         run: |
           echo "# Dry Run Results" >> $GITHUB_STEP_SUMMARY
           echo "**Version bump:** ${{ github.event.inputs.version_bump }}" >> $GITHUB_STEP_SUMMARY
@@ -306,7 +306,7 @@ jobs:
 
   create-release:
     needs: [prepare-release, build-binaries, build-docker]
-    if: always() && needs.prepare-release.result == 'success' && needs.build-binaries.result == 'success' && !github.event.inputs.dry_run
+    if: always() && needs.prepare-release.result == 'success' && needs.build-binaries.result == 'success' && github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
