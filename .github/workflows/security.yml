@@ -88,9 +88,6 @@ jobs:
           key: codeql-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build for CodeQL analysis
-        env:
-          # Use published crates instead of local path dependencies for CodeQL
-          # This ensures CodeQL can analyze the code without ../fhirpath-rs
         run: |
           # Build with default features for CodeQL analysis
           # Skip building benchmark binary that's not needed for security analysis
